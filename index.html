@@ -218,9 +218,10 @@
         // --- Configuration ---
         const QUESTIONS_PER_SET = 20;
         const AUTO_PROCEED_DELAY = 800;
-        const DEFAULT_WEBHOOK_URL = 'https://hook.us2.make.com/dsnznsn7akpd4ccnl8h1w5j1pmullftg'; // Replace if you have a default
-        const USER_NAME_STORAGE_KEY = 'themedVocabUserNamePSLE_v2'; // Unique key for this app
-        const WEBHOOK_URL_STORAGE_KEY = 'themedVocabWebhookUrlPSLE_v2'; // Unique key
+        // ** UPDATED DEFAULT WEBHOOK URL **
+        const DEFAULT_WEBHOOK_URL = 'https://hook.us2.make.com/a71p0euydnnf2kxbsfwzm8oketpw6vyu'; 
+        const USER_NAME_STORAGE_KEY = 'themedVocabUserNamePSLE_v3'; // Using v3 to ensure fresh start for testing
+        const WEBHOOK_URL_STORAGE_KEY = 'themedVocabWebhookUrlPSLE_v3'; // Using v3
 
         // --- Themed Vocabulary Questions Data ---
         const allThemedVocabQuestionsBySet = [
@@ -636,11 +637,10 @@
                 totalQuestions, 
                 percentage, 
                 timeTaken: timeDiff,
-                // ** THIS IS THE CORRECTED PART FOR WEBHOOK PAYLOAD **
                 incorrectAnswersData: incorrectAnswersForDisplay.map(item => ({  
-                    question: item.questionData.question,       // Use 'question' as key
-                    userAnswer: item.userAnswer,                 // Use 'userAnswer' as key
-                    correctAnswer: item.questionData.correctAnswer // Use 'correctAnswer' as key
+                    question: item.questionData.question,       
+                    userAnswer: item.userAnswer,                 
+                    correctAnswer: item.questionData.correctAnswer 
                 })),
                 isRedoing, 
                 os: navigator.platform || 'N/A', 
@@ -688,10 +688,8 @@
 
         function sendResultsToWebhook(data) {
             const currentWebhookUrl = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL;
-            if (!currentWebhookUrl || (currentWebhookUrl === DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.includes('xxxx'))) {
-                if (!localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) && DEFAULT_WEBHOOK_URL.includes('xxxx')) {
-                   console.log("Webhook URL is a placeholder or not set. Skipping sending results."); return;
-                }
+            if (!currentWebhookUrl || (currentWebhookUrl === DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.includes('xxxx') && !localStorage.getItem(WEBHOOK_URL_STORAGE_KEY)) ) {
+                   console.log("Webhook URL is effectively a placeholder or not set. Skipping sending results."); return;
            }
            if (!navigator.onLine) { console.warn("Browser is offline. Skipping sending results to webhook."); return; }
            
@@ -715,7 +713,7 @@
 
         function openWebhookModal() {
             const currentWebhookUrl = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL;
-            webhookUrlInput.value = (currentWebhookUrl === DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.includes('xxxx')) ? '' : currentWebhookUrl;
+            webhookUrlInput.value = (currentWebhookUrl === DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.includes('xxxx') && !localStorage.getItem(WEBHOOK_URL_STORAGE_KEY)) ? '' : currentWebhookUrl;
             webhookModal.style.display = 'flex';
         }
 
