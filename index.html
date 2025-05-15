@@ -219,8 +219,8 @@
         const QUESTIONS_PER_SET = 20;
         const AUTO_PROCEED_DELAY = 800;
         const DEFAULT_WEBHOOK_URL = 'https://hook.us2.make.com/dsnznsn7akpd4ccnl8h1w5j1pmullftg'; // Replace if you have a default
-        const USER_NAME_STORAGE_KEY = 'themedVocabUserNamePSLE'; // Unique key for this app
-        const WEBHOOK_URL_STORAGE_KEY = 'themedVocabWebhookUrlPSLE'; // Unique key
+        const USER_NAME_STORAGE_KEY = 'themedVocabUserNamePSLE_v2'; // Unique key for this app
+        const WEBHOOK_URL_STORAGE_KEY = 'themedVocabWebhookUrlPSLE_v2'; // Unique key
 
         // --- Themed Vocabulary Questions Data ---
         const allThemedVocabQuestionsBySet = [
@@ -341,14 +341,14 @@
             ]
         ];
 
-        const TOTAL_SETS_AVAILABLE = allThemedVocabQuestionsBySet.length; // Should be 5
+        const TOTAL_SETS_AVAILABLE = allThemedVocabQuestionsBySet.length; 
 
         // --- State Variables ---
         let questionSets = []; 
         let currentSetData = []; 
         let currentQuestionIndex = 0;
         let score = 0;
-        let incorrectAnswers = []; // This array will store mistake details
+        let incorrectAnswers = []; 
         let startTime;
         let endTime;
         let isRedoing = false;
@@ -410,11 +410,11 @@
         function populateSetButtons() {
             setButtonsContainer.innerHTML = ''; 
             const setColors = [
-                'bg-blue-500 hover:bg-blue-600',    // Emotions
-                'bg-green-500 hover:bg-green-600',  // Descriptive
-                'bg-yellow-500 hover:bg-yellow-600 text-slate-800', // Action Verbs (text color adjusted for yellow)
-                'bg-purple-500 hover:bg-purple-600',// Idioms
-                'bg-pink-500 hover:bg-pink-600'     // Transitions
+                'bg-blue-500 hover:bg-blue-600',    
+                'bg-green-500 hover:bg-green-600',  
+                'bg-yellow-500 hover:bg-yellow-600 text-slate-800', 
+                'bg-purple-500 hover:bg-purple-600',
+                'bg-pink-500 hover:bg-pink-600'     
             ];
             const setNames = [
                 "Set 1: Emotions & Feelings",
@@ -476,7 +476,7 @@
 
             currentQuestionIndex = 0;
             score = 0;
-            incorrectAnswers = []; // Reset incorrect answers for the new set
+            incorrectAnswers = []; 
             isRedoing = false;
             
             setSelectionScreen.classList.add('hidden');
@@ -554,12 +554,11 @@
                      }
                 });
                 incorrectSound.triggerAttackRelease("C3", "8n");
-                // ** THIS IS WHERE INCORRECT ANSWERS ARE RECORDED **
                 incorrectAnswers.push({ 
                     questionData: JSON.parse(JSON.stringify(questionData)), 
                     userAnswer: selectedAnswer 
                 });
-                console.log("Mistake recorded:", incorrectAnswers); // For debugging
+                console.log("Mistake recorded:", incorrectAnswers); 
             }
             isWaitingToProceed = true;
             flashcard.classList.add('clickable-card'); flashcard.style.cursor = 'pointer';
@@ -579,7 +578,7 @@
             endTime = new Date();
             const timeDiff = Math.round((endTime - startTime) / 1000);
             const totalQuestions = currentSetData.length;
-            const currentScore = isRedoing ? (totalQuestions - incorrectAnswers.length) : score; // For redo, score is calculated based on current round's remaining incorrects
+            const currentScore = isRedoing ? (totalQuestions - incorrectAnswers.length) : score;
             const percentage = totalQuestions > 0 ? Math.round((currentScore / totalQuestions) * 100) : 0;
 
             resultsHeadingEl.textContent = isRedoing ? 'Review Complete!' : `Set ${selectedSetNumberGlobal} Complete!`;
@@ -612,7 +611,7 @@
             requestAnimationFrame(animateRocket);
 
             incorrectList.innerHTML = '';
-            const incorrectAnswersForDisplay = isRedoing ? incorrectAnswers : incorrectAnswers; // `incorrectAnswers` always holds mistakes from current round
+            const incorrectAnswersForDisplay = incorrectAnswers; 
             
             if (incorrectAnswersForDisplay.length > 0) {
                 incorrectListContainer.classList.remove('hidden'); noIncorrectText.classList.add('hidden');
@@ -623,26 +622,25 @@
                                    `<b>Correct:</b> <span class="text-emerald-600">${item.questionData.correctAnswer}</span>`;
                     incorrectList.appendChild(li);
                 });
-                // Show "Redo Incorrect" button only if it was an original attempt AND there were mistakes.
                 redoIncorrectButton.classList.toggle('hidden', isRedoing || incorrectAnswersForDisplay.length === 0);
             } else {
                 incorrectListContainer.classList.add('hidden'); noIncorrectText.classList.remove('hidden');
                 redoIncorrectButton.classList.add('hidden');
             }
             
-            // ** THIS IS WHERE MISTAKES ARE PREPARED FOR THE WEBHOOK **
             sendResultsToWebhook({
                 name: userName, 
-                topic: "Themed Vocabulary PSLE", // Added PSLE to make it more specific
+                topic: "Themed Vocabulary PSLE", 
                 set: selectedSetNumberGlobal, 
                 score: currentScore, 
                 totalQuestions, 
                 percentage, 
                 timeTaken: timeDiff,
-                incorrectAnswersData: incorrectAnswersForDisplay.map(i => ({  // Use incorrectAnswersForDisplay
-                    q: i.questionData.question, 
-                    u: i.userAnswer, 
-                    c: i.questionData.correctAnswer 
+                // ** THIS IS THE CORRECTED PART FOR WEBHOOK PAYLOAD **
+                incorrectAnswersData: incorrectAnswersForDisplay.map(item => ({  
+                    question: item.questionData.question,       // Use 'question' as key
+                    userAnswer: item.userAnswer,                 // Use 'userAnswer' as key
+                    correctAnswer: item.questionData.correctAnswer // Use 'correctAnswer' as key
                 })),
                 isRedoing, 
                 os: navigator.platform || 'N/A', 
@@ -650,27 +648,13 @@
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'N/A'
             });
 
-            // If it was a redo round, and there are STILL incorrect answers,
-            // `incorrectAnswers` will still contain them. If the user chooses
-            // "Choose New Set", `incorrectAnswers` will be cleared by `selectSet`.
-            // If they were to hit a "Redo Again" (not implemented), it would use the current `incorrectAnswers`.
             if (isRedoing) {
-                // If it was a redo, and all are now correct, clear incorrectAnswers.
-                // If some are still wrong after redo, incorrectAnswers will still have them for the list.
-                // The `isRedoing` flag going back to false will manage the "Redo Incorrect" button logic.
-                isRedoing = false; // Reset redoing state after a redo attempt concludes.
+                isRedoing = false; 
             }
         }
 
         function redoIncorrect() {
-            // `incorrectAnswers` from the *previous* non-redo round are used.
-            // If the user just finished a redo round and there were still mistakes,
-            // `incorrectAnswers` would reflect those. This logic assumes "Redo Incorrect"
-            // always refers to the mistakes from the *last completed non-redo set*.
-            // For simplicity, let's assume it redoes mistakes from the *immediately preceding* round,
-            // which is what `incorrectAnswers` currently holds.
             const questionsToRedo = incorrectAnswers.map(item => item.questionData);
-
             if (questionsToRedo.length === 0) { 
                 alert("No incorrect answers from the last round to redo!"); 
                 return; 
@@ -678,9 +662,9 @@
             currentSetData = questionsToRedo;
             shuffleArray(currentSetData); 
             currentQuestionIndex = 0;
-            score = 0; // Reset score for the redo round
-            incorrectAnswers = []; // Clear incorrectAnswers for *this new redo attempt*
-            isRedoing = true; // Set the flag
+            score = 0; 
+            incorrectAnswers = []; 
+            isRedoing = true; 
             resultsScreen.classList.add('hidden'); 
             flashcardScreen.classList.remove('hidden');
             startTime = new Date();
@@ -690,8 +674,7 @@
         function showSetSelection() {
             if (proceedTimeoutId) { clearTimeout(proceedTimeoutId); proceedTimeoutId = null; }
             isWaitingToProceed = false; 
-            isRedoing = false; // Always reset redoing state when going back to set selection
-            // `incorrectAnswers` will be reset when a new set is selected via `selectSet()`
+            isRedoing = false; 
             nameModal.style.display = 'none';
             flashcardScreen.classList.add('hidden'); 
             resultsScreen.classList.add('hidden');
@@ -704,7 +687,6 @@
         }
 
         function sendResultsToWebhook(data) {
-            // Defensive check for webhook URL
             const currentWebhookUrl = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL;
             if (!currentWebhookUrl || (currentWebhookUrl === DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.includes('xxxx'))) {
                 if (!localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) && DEFAULT_WEBHOOK_URL.includes('xxxx')) {
@@ -714,7 +696,7 @@
            if (!navigator.onLine) { console.warn("Browser is offline. Skipping sending results to webhook."); return; }
            
            console.log("Sending to webhook:", currentWebhookUrl);
-           console.log("Webhook payload:", data); // Log the payload to see if incorrectAnswersData is populated
+           console.log("Webhook payload:", data); 
 
            fetch(currentWebhookUrl, { 
                method: 'POST', 
@@ -725,7 +707,7 @@
                if (!res.ok) {
                    return res.text().then(text => { throw new Error(`Webhook Error ${res.status}: ${text}`) });
                }
-               return res.json().catch(()=>res.text()); // Try JSON, fallback to text
+               return res.json().catch(()=>res.text()); 
             })
            .then(d => console.log('Webhook success:', d))
            .catch(e => console.error('Webhook fetch error:', e));
@@ -743,9 +725,9 @@
             const url = webhookUrlInput.value.trim();
             try {
                 if (url) { 
-                    new URL(url); // Basic validation
+                    new URL(url); 
                     localStorage.setItem(WEBHOOK_URL_STORAGE_KEY, url); 
-                    WEBHOOK_URL = url; // Update the global variable if needed, though it's read from localStorage mostly
+                    WEBHOOK_URL = url; 
                 } else { 
                     localStorage.removeItem(WEBHOOK_URL_STORAGE_KEY); 
                     WEBHOOK_URL = DEFAULT_WEBHOOK_URL; 
@@ -784,7 +766,7 @@
                 return;
             }
             userName = localStorage.getItem(USER_NAME_STORAGE_KEY) || '';
-            WEBHOOK_URL = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL; // Load webhook URL on start
+            WEBHOOK_URL = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL; 
 
             if (userName) showSetSelection();
             else { nameModal.style.display = 'flex'; userNameInput.focus(); }
