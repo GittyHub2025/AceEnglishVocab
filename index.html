@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>PSLE Vocabulary Power-Up</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+            -webkit-tap-highlight-color: transparent; /* Prevent tap highlight on mobile */
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
+            20%, 40%, 60%, 80% { transform: translateX(8px); }
+        }
+        .shake { animation: shake 0.5s ease-in-out; }
+
+        /* Vertical Flip Animation for Correct Answer */
+        @keyframes vertical-flip-reveal {
+            0% {
+                transform: perspective(1000px) rotateX(0deg);
+                background-color: white;
+                color: #374151; /* Default text color (e.g., gray-700) */
+            }
+            49% {
+                transform: perspective(1000px) rotateX(-90deg);
+                background-color: white;
+                color: #374151;
+            }
+            50% { /* Content invisible, switch properties */
+                transform: perspective(1000px) rotateX(-90deg);
+                background-color: #22c55e; /* Green-500 */
+                color: white;
+            }
+            100% {
+                transform: perspective(1000px) rotateX(0deg);
+                background-color: #22c55e; /* Green-500 */
+                color: white;
+            }
+        }
+        .correct-flip {
+            animation: vertical-flip-reveal 0.6s forwards;
+        }
+        .correct-flip #questionText,
+        .correct-flip #feedbackText,
+        .correct-flip #questionImagePlaceholder {
+            color: white !important;
+        }
+
+        /* Incorrect Answer State */
+        .incorrect-state {
+            background-color: #ef4444; /* Red-500 */
+            color: white;
+            border-color: #b91c1c !important; /* Red-700 for border */
+        }
+        .incorrect-state #questionText,
+        .incorrect-state #feedbackText,
+        .incorrect-state #questionImagePlaceholder {
+            color: white !important;
+        }
+
+
+        /* Button base styles */
+        .choice-button, .action-button {
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            border-radius: 0.5rem;
+            font-weight: 600;
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            border: 1px solid transparent; /* Base border */
+        }
+        /* Button hover/active states */
+        .choice-button:hover, .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+        }
+        .choice-button:active, .action-button:active {
+            transform: translateY(0px);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .choice-button:disabled {
+            opacity: 0.8;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .choice-button:disabled:hover {
+             transform: none;
+             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+
+        .clickable-card { cursor: pointer; }
+        #progressBarFill { transition: width 0.3s ease-out; }
+        #confettiCanvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+        .modal-content { background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 0.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .modal-close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .modal-close-button:hover, .modal-close-button:focus { color: black; text-decoration: none; cursor: pointer; }
+
+        .race-track-container { position: relative; width: 100%; height: 30px; margin-top: 20px; margin-bottom: 20px; z-index: 1; }
+        .race-track { position: absolute; bottom: 0; left: 0; width: calc(100% - 30px); height: 10px; background-color: #d1d5db; border-radius: 5px; z-index: 2; }
+        .race-track-fill { position: absolute; bottom: 0; left: 0; height: 10px; background-color: #3b82f6; border-radius: 5px; width: 0%; z-index: 3; }
+        .rocket { position: absolute; bottom: -8px; left: 0; font-size: 36px; transform: translateX(-50%); z-index: 10; }
+        .checkered-flag { position: absolute; bottom: -8px; right: 0; font-size: 24px; transform: translateX(50%); z-index: 10; }
+
+        #questionText { word-break: break-word; hyphens: auto; }
+        .choice-button { white-space: normal; word-break: break-word; line-height: 1.4; min-height: 60px; display: flex; align-items: center; justify-content: center; }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-br from-blue-200 via-indigo-200 to-purple-200 min-h-screen flex items-center justify-center p-4">
+
+    <div id="appContainer" class="w-full max-w-md mx-auto">
+
+        <!-- Name Input Modal -->
+         <div id="nameModal" class="modal">
+             <div class="modal-content text-center">
+                 <h2 class="text-xl md:text-2xl font-semibold mb-4 text-indigo-800">Welcome, Lexicon Legend!</h2>
+                 <p class="text-slate-600 mb-4">Please enter your name to get started.</p>
+                 <input type="text" id="userNameInput" placeholder="Your Name" class="w-full p-2 border border-slate-300 rounded mb-4 focus:ring-indigo-500 focus:border-indigo-500 text-center text-lg">
+                 <button onclick="saveUserName()" class="action-button bg-indigo-500 hover:bg-indigo-600 text-white w-full py-3 px-6 text-lg">Power Up My Vocabulary!</button>
+             </div>
+         </div>
+
+        <!-- Set Selection Screen -->
+        <div id="setSelectionScreen" class="hidden bg-white p-6 md:p-8 rounded-xl shadow-lg text-center">
+            <h1 class="text-2xl md:text-3xl font-bold text-indigo-800 mb-6">PSLE Vocabulary Power-Up</h1>
+            <p class="text-slate-600 mb-8">Choose a category to strengthen your word arsenal:</p>
+            <div id="setButtonsContainer" class="grid grid-cols-1 gap-4">
+                <!-- Set buttons will be dynamically added here by JS -->
+            </div>
+             <!-- Webhook settings button will be added below this container by JS -->
+        </div>
+
+        <!-- Flashcard Screen -->
+        <div id="flashcardScreen" class="hidden bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-slate-600">Progress</span>
+                    <span id="progressText" class="text-sm font-medium text-indigo-700">0 / 20</span> </div>
+                <div class="w-full bg-slate-200 rounded-full h-2.5">
+                    <div id="progressBarFill" class="bg-indigo-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="flashcard" class="bg-white border border-slate-300 rounded-lg p-6 mb-6 text-center min-h-[200px] flex flex-col items-center justify-center transition-all duration-200">
+                 <div id="flashcardContent" class="w-full">
+                     <img id="questionImage" src="" alt="Question image" class="hidden mx-auto mb-4 max-h-40 h-auto w-auto object-contain rounded">
+                     <p id="questionText" class="text-lg md:text-xl font-semibold text-slate-800"></p>
+                     <p id="feedbackText" class="mt-2 text-base md:text-lg font-semibold"></p>
+                     <p id="continueText" class="mt-4 text-sm text-slate-500 hidden">Tap card to continue...</p>
+                 </div>
+            </div>
+
+            <div id="answerChoices" class="grid grid-cols-1 gap-3 md:gap-4">
+                <button id="choice1" onclick="checkAnswer(this)" class="choice-button bg-slate-100 hover:bg-slate-200 text-slate-700 text-base md:text-lg"></button>
+                <button id="choice2" onclick="checkAnswer(this)" class="choice-button bg-slate-100 hover:bg-slate-200 text-slate-700 text-base md:text-lg"></button>
+                <button id="choice3" onclick="checkAnswer(this)" class="choice-button bg-slate-100 hover:bg-slate-200 text-slate-700 text-base md:text-lg"></button>
+            </div>
+             <button onclick="showSetSelection()" class="action-button mt-6 bg-slate-500 hover:bg-slate-600 text-white w-full text-sm py-3 px-6">Back to Set Selection</button>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="resultsScreen" class="hidden bg-white p-6 md:p-8 rounded-xl shadow-lg text-center">
+            <h2 id="resultsHeading" class="text-2xl md:text-3xl font-bold text-indigo-800 mb-4"></h2>
+
+            <div class="bg-emerald-500 text-white p-4 rounded-lg mb-6">
+                <p class="text-lg md:text-xl font-semibold mb-1">Your Score:</p>
+                <p id="scoreDisplay" class="text-4xl md:text-5xl font-bold italic"></p>
+            </div>
+
+            <div class="race-track-container">
+                <div class="race-track"></div>
+                <div id="raceTrackFill" class="race-track-fill"></div>
+                <span id="rocketEl" class="rocket">🚀</span>
+                <span id="checkeredFlag" class="checkered-flag">🏁</span>
+            </div>
+            <p class="text-lg text-slate-700 mb-2">Percentage: <span id="percentage" class="font-semibold"></span>%</p>
+            <p class="text-lg text-slate-700 mb-6">Time: <span id="timeTaken" class="font-semibold"></span> seconds</p>
+
+            <p id="encouragementText" class="text-lg text-indigo-700 font-semibold mb-6"></p>
+            <div id="incorrectListContainer" class="mb-6 text-left">
+                <h3 class="text-xl font-semibold text-red-600 mb-3">Review Incorrect Answers:</h3>
+                <ul id="incorrectList" class="list-disc list-inside space-y-1 text-slate-600"></ul>
+                 <p id="noIncorrectText" class="text-emerald-600 font-semibold hidden">Great job, no incorrect answers!</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button id="redoIncorrectButton" onclick="redoIncorrect()" class="action-button bg-orange-500 hover:bg-orange-600 text-white w-full py-3 px-6">Redo Incorrect</button>
+                <button onclick="showSetSelection()" class="action-button bg-indigo-500 hover:bg-indigo-600 text-white w-full py-3 px-6">Choose New Set</button>
+            </div>
+        </div>
+
+        <!-- Webhook Settings Modal -->
+        <div id="webhookModal" class="modal">
+          <div class="modal-content">
+            <span class="modal-close-button" onclick="closeWebhookModal()">×</span>
+            <h2 class="text-xl font-semibold mb-4 text-indigo-800">Webhook Setup</h2>
+            <p class="text-slate-600 mb-4">Enter your Make.com (or other service) webhook URL below to send results data automatically.</p>
+            <input type="url" id="webhookUrlInput" placeholder="https://hook.make.com/xxxxxxxxxxxx" class="w-full p-2 border border-slate-300 rounded mb-4 focus:ring-indigo-500 focus:border-indigo-500">
+             <p class="text-xs text-slate-500 mb-4">You can change this later if needed.</p>
+            <button onclick="saveWebhookUrl()" class="action-button bg-emerald-500 hover:bg-emerald-600 text-white py-2 px-4">Save URL</button>
+          </div>
+        </div>
+    </div>
+
+    <canvas id="confettiCanvas"></canvas>
+
+    <script>
+        // --- Configuration ---
+        const QUESTIONS_PER_SET = 20;
+        const AUTO_PROCEED_DELAY = 800;
+        const DEFAULT_WEBHOOK_URL = 'https://hook.us2.make.com/dsnznsn7akpd4ccnl8h1w5j1pmullftg'; // Replace if you have a default
+        const USER_NAME_STORAGE_KEY = 'themedVocabUserName';
+        const WEBHOOK_URL_STORAGE_KEY = 'themedVocabWebhookUrl';
+
+        // --- Themed Vocabulary Questions Data ---
+        const allThemedVocabQuestionsBySet = [
+            // --- SET 1: Emotions and Feelings Vocabulary ---
+            [
+                { id: 'tv_s1q1', question: "If someone is 'elated', they are feeling:", options: ["Slightly sad", "Extremely happy", "Very angry"], correctAnswer: "Extremely happy", image: null },
+                { id: 'tv_s1q2', question: "'Melancholy' describes a feeling of:", options: ["Joyful excitement", "Pensive sadness or gloominess", "Intense fear"], correctAnswer: "Pensive sadness or gloominess", image: null },
+                { id: 'tv_s1q3', question: "A person who is 'apprehensive' is likely feeling:", options: ["Confident and bold", "Worried or anxious about the future", "Calm and indifferent"], correctAnswer: "Worried or anxious about the future", image: null },
+                { id: 'tv_s1q4', question: "To be 'exasperated' means to be:", options: ["Mildly pleased", "Intensely irritated or frustrated", "Deeply relaxed"], correctAnswer: "Intensely irritated or frustrated", image: null },
+                { id: 'tv_s1q5', question: "'Content' describes a state of:", options: ["Peaceful happiness or satisfaction", "Extreme agitation", "Bitter disappointment"], correctAnswer: "Peaceful happiness or satisfaction", image: null },
+                { id: 'tv_s1q6', question: "If you are 'ambivalent' about a decision, you are:", options: ["Absolutely certain", "Undecided or have mixed feelings", "Very enthusiastic"], correctAnswer: "Undecided or have mixed feelings", image: null },
+                { id: 'tv_s1q7', question: "Someone feeling 'ecstatic' is:", options: ["Slightly unhappy", "Overjoyed and overwhelmingly happy", "Bored and tired"], correctAnswer: "Overjoyed and overwhelmingly happy", image: null },
+                { id: 'tv_s1q8', question: "The word 'livid' means:", options: ["Pale with fear", "Furiously angry", "Calm and composed"], correctAnswer: "Furiously angry", image: null },
+                { id: 'tv_s1q9', question: "A 'wistful' expression often shows:", options: ["Great joy", "Vague or regretful longing", "Strong disapproval"], correctAnswer: "Vague or regretful longing", image: null },
+                { id: 'tv_s1q10', question: "To be 'jubilant' is to feel or express:", options: ["Deep sorrow", "Great happiness and triumph", "Mild anxiety"], correctAnswer: "Great happiness and triumph", image: null },
+                { id: 'tv_s1q11', question: "If someone is 'crestfallen', they are:", options: ["Proud and arrogant", "Sad and disappointed", "Hopeful and optimistic"], correctAnswer: "Sad and disappointed", image: null },
+                { id: 'tv_s1q12', question: "To be 'bewildered' means to be:", options: ["Fully understanding", "Perplexed and confused", "Completely calm"], correctAnswer: "Perplexed and confused", image: null },
+                { id: 'tv_s1q13', question: "'Indignant' describes a feeling of:", options: ["Joyful agreement", "Anger at unfair treatment", "Peaceful acceptance"], correctAnswer: "Anger at unfair treatment", image: null },
+                { id: 'tv_s1q14', question: "A 'serene' atmosphere is:", options: ["Chaotic and noisy", "Calm, peaceful, and untroubled", "Full of tension"], correctAnswer: "Calm, peaceful, and untroubled", image: null },
+                { id: 'tv_s1q15', question: "To be 'petrified' is to be:", options: ["Slightly nervous", "So frightened one cannot move", "Brave and daring"], correctAnswer: "So frightened one cannot move", image: null },
+                { id: 'tv_s1q16', question: "If you are 'mortified', you feel:", options: ["Extremely proud", "Very embarrassed or ashamed", "Confident and self-assured"], correctAnswer: "Very embarrassed or ashamed", image: null },
+                { id: 'tv_s1q17', question: "A 'nonchalant' attitude is:", options: ["Full of anxiety and worry", "Casually calm and indifferent", "Overly enthusiastic"], correctAnswer: "Casually calm and indifferent", image: null },
+                { id: 'tv_s1q18', question: "Feeling 'resentful' means feeling:", options: ["Grateful and appreciative", "Bitter or indignant about unfairness", "Joyful and forgiving"], correctAnswer: "Bitter or indignant about unfairness", image: null },
+                { id: 'tv_s1q19', question: "A 'sullen' person is often:", options: ["Cheerful and outgoing", "Bad-tempered, sulky, and gloomy", "Lively and energetic"], correctAnswer: "Bad-tempered, sulky, and gloomy", image: null },
+                { id: 'tv_s1q20', question: "To be 'zestful' means to be:", options: ["Lacking energy and enthusiasm", "Full of energy and enthusiasm", "Quiet and reserved"], correctAnswer: "Full of energy and enthusiasm", image: null }
+            ],
+            // --- SET 2: Descriptive Language (Settings and Characters) ---
+            [
+                { id: 'tv_s2q1', question: "The word 'ethereal' best describes something that is:", options: ["Solid and heavy", "Extremely delicate and light, seeming otherworldly", "Dark and gloomy"], correctAnswer: "Extremely delicate and light, seeming otherworldly", image: null },
+                { id: 'tv_s2q2', question: "A 'dilapidated' building is:", options: ["Newly constructed", "In a state of disrepair or ruin", "Ornate and well-maintained"], correctAnswer: "In a state of disrepair or ruin", image: null },
+                { id: 'tv_s2q3', question: "A 'picturesque' village is:", options: ["Ugly and unpleasant", "Visually attractive in a charming way", "Modern and industrial"], correctAnswer: "Visually attractive in a charming way", image: null },
+                { id: 'tv_s2q4', question: "'Cavernous' describes a space that is:", options: ["Small and cramped", "Very large, deep, and hollow like a cave", "Bright and airy"], correctAnswer: "Very large, deep, and hollow like a cave", image: null },
+                { id: 'tv_s2q5', question: "A 'meticulous' student pays great attention to:", options: ["The overall picture only", "Detail, and is very careful and precise", "Getting work done quickly, regardless of quality"], correctAnswer: "Detail, and is very careful and precise", image: null },
+                { id: 'tv_s2q6', question: "A 'garrulous' person is someone who is:", options: ["Quiet and reserved", "Excessively talkative, especially about unimportant things", "Serious and thoughtful"], correctAnswer: "Excessively talkative, especially about unimportant things", image: null },
+                { id: 'tv_s2q7', question: "To be 'stoic' means to:", options: ["Show emotions openly", "Endure pain or hardship without showing feelings or complaining", "Complain frequently about small issues"], correctAnswer: "Endure pain or hardship without showing feelings or complaining", image: null },
+                { id: 'tv_s2q8', question: "A 'benevolent' ruler is generally:", options: ["Cruel and oppressive", "Well-meaning and kindly", "Selfish and greedy"], correctAnswer: "Well-meaning and kindly", image: null },
+                { id: 'tv_s2q9', question: "An 'ominous' silence suggests that:", options: ["Something cheerful is about to happen", "Something bad or threatening might happen", "Everything is peaceful and calm"], correctAnswer: "Something bad or threatening might happen", image: null },
+                { id: 'tv_s2q10', question: "'Lush' vegetation means it is:", options: ["Dry and barren", "Growing luxuriantly and abundantly", "Sparse and dying"], correctAnswer: "Growing luxuriantly and abundantly", image: null },
+                { id: 'tv_s2q11', question: "An 'idyllic' scene is typically:", options: ["Chaotic and stressful", "Extremely happy, peaceful, or picturesque", "Dark and depressing"], correctAnswer: "Extremely happy, peaceful, or picturesque", image: null },
+                { id: 'tv_s2q12', question: "A 'gaunt' figure appears:", options: ["Plump and healthy", "Lean and haggard, often due to suffering or hunger", "Strong and robust"], correctAnswer: "Lean and haggard, often due to suffering or hunger", image: null },
+                { id: 'tv_s2q13', question: "A 'vivacious' personality is:", options: ["Dull and uninteresting", "Attractively lively and animated", "Quiet and shy"], correctAnswer: "Attractively lively and animated", image: null },
+                { id: 'tv_s2q14', question: "A 'dapper' gentleman is usually:", options: ["Untidy and scruffy", "Neat and trim in dress and appearance", "Overly casual in attire"], correctAnswer: "Neat and trim in dress and appearance", image: null },
+                { id: 'tv_s2q15', question: "A 'desolate' landscape is:", options: ["Full of people and activity", "Uninhabited and giving an impression of bleak emptiness", "Vibrant and colourful"], correctAnswer: "Uninhabited and giving an impression of bleak emptiness", image: null },
+                { id: 'tv_s2q16', question: "'Opulent' surroundings are typically:", options: ["Simple and plain", "Ostentatiously costly and luxurious", "Poor and run-down"], correctAnswer: "Ostentatiously costly and luxurious", image: null },
+                { id: 'tv_s2q17', question: "A 'pristine' forest is one that is:", options: ["Heavily polluted", "In its original, unspoilt condition", "Damaged by human activity"], correctAnswer: "In its original, unspoilt condition", image: null },
+                { id: 'tv_s2q18', question: "'Squalid' conditions refer to a place that is:", options: ["Clean and well-maintained", "Extremely dirty and unpleasant", "Neat and tidy"], correctAnswer: "Extremely dirty and unpleasant", image: null },
+                { id: 'tv_s2q19', question: "A 'gregarious' animal is one that is:", options: ["Solitary and prefers to be alone", "Fond of company; sociable", "Shy and timid"], correctAnswer: "Fond of company; sociable", image: null },
+                { id: 'tv_s2q20', question: "An 'imposing' monument is:", options: ["Small and insignificant", "Grand and impressive in appearance", "Plain and ordinary"], correctAnswer: "Grand and impressive in appearance", image: null }
+            ],
+            // --- SET 3: Action Verbs and Phrasal Verbs ---
+            [
+                { id: 'tv_s3q1', question: "Instead of 'walked slowly,' a more vivid verb is:", options: ["Dashed", "Strolled", "Sprinted"], correctAnswer: "Strolled", image: null },
+                { id: 'tv_s3q2', question: "A stronger verb for 'ate quickly' could be:", options: ["Nibbled", "Devoured", "Savoured"], correctAnswer: "Devoured", image: null },
+                { id: 'tv_s3q3', question: "The phrasal verb 'look after' means to:", options: ["Search for something", "Take care of someone/something", "Resemble someone"], correctAnswer: "Take care of someone/something", image: null },
+                { id: 'tv_s3q4', question: "Instead of 'said quietly,' a better verb is:", options: ["Shouted", "Whispered", "Exclaimed"], correctAnswer: "Whispered", image: null },
+                { id: 'tv_s3q5', question: "If you 'give up' on a task, you:", options: ["Distribute it to others", "Surrender or stop trying", "Offer it as a gift"], correctAnswer: "Surrender or stop trying", image: null },
+                { id: 'tv_s3q6', question: "A more precise verb for 'looked carefully' is:", options: ["Glanced", "Scrutinized", "Gawked"], correctAnswer: "Scrutinized", image: null },
+                { id: 'tv_s3q7', question: "To 'put off' a meeting means to:", options: ["Extinguish a fire", "Postpone it", "Wear an item of clothing"], correctAnswer: "Postpone it", image: null },
+                { id: 'tv_s3q8', question: "Instead of 'fell hard,' a more descriptive verb/phrase is:", options: ["Tripped lightly", "Plummeted downwards", "Floated gently"], correctAnswer: "Plummeted downwards", image: null },
+                { id: 'tv_s3q9', question: "To 'come across' an old photo means you:", options: ["Crossed a road to get it", "Found it by chance", "Visited it intentionally"], correctAnswer: "Found it by chance", image: null },
+                { id: 'tv_s3q10', question: "A stronger verb for 'shone brightly' is:", options: ["Gleamed", "Dimmed", "Flickered"], correctAnswer: "Gleamed", image: null },
+                { id: 'tv_s3q11', question: "When an airplane 'takes off', it:", options: ["Removes a part of itself", "Becomes airborne", "Imitates another plane"], correctAnswer: "Becomes airborne", image: null },
+                { id: 'tv_s3q12', question: "Instead of 'cried loudly,' a more evocative verb is:", options: ["Sniffled", "Sobbed", "Whimpered"], correctAnswer: "Sobbed", image: null },
+                { id: 'tv_s3q13', question: "If a car 'breaks down', it means it:", options: ["Is demolished into pieces", "Stops functioning", "Is analysed carefully"], correctAnswer: "Stops functioning", image: null },
+                { id: 'tv_s3q14', question: "A more vivid verb for 'moved silently' is:", options: ["Stomped", "Crept", "Marched"], correctAnswer: "Crept", image: null },
+                { id: 'tv_s3q15', question: "To 'get along with' someone means to:", options: ["Go and fetch them", "Have a friendly relationship with them", "Escape with them"], correctAnswer: "Have a friendly relationship with them", image: null },
+                { id: 'tv_s3q16', question: "Instead of 'held tightly,' a stronger verb is:", options: ["Touched lightly", "Clutched", "Released gently"], correctAnswer: "Clutched", image: null },
+                { id: 'tv_s3q17', question: "If you 'run out of' milk, you have:", options: ["Escaped from the milk", "Exhausted your supply of milk", "Jogged outside with milk"], correctAnswer: "Exhausted your supply of milk", image: null },
+                { id: 'tv_s3q18', question: "A more descriptive verb for 'laughed hard' is:", options: ["Chuckled softly", "Guffawed loudly", "Smiled faintly"], correctAnswer: "Guffawed loudly", image: null },
+                { id: 'tv_s3q19', question: "To 'turn down' an invitation means to:", options: ["Lower the volume of the invitation", "Reject or decline it", "Fold it neatly"], correctAnswer: "Reject or decline it", image: null },
+                { id: 'tv_s3q20', question: "Instead of 'threw lightly,' a better verb choice could be:", options: ["Hurled forcefully", "Tossed gently", "Dropped accidentally"], correctAnswer: "Tossed gently", image: null }
+            ],
+            // --- SET 4: Idioms and Proverbs ---
+            [
+                { id: 'tv_s4q1', question: "What does the idiom 'every cloud has a silver lining' mean?", options: ["Rain is always followed by sunshine.", "Every bad situation has some positive aspect.", "Clouds are metallic."], correctAnswer: "Every bad situation has some positive aspect.", image: null },
+                { id: 'tv_s4q2', question: "If you 'bite the bullet', you:", options: ["Eat something very hard", "Endure a painful or difficult situation bravely", "Chew on ammunition"], correctAnswer: "Endure a painful or difficult situation bravely", image: null },
+                { id: 'tv_s4q3', question: "The phrase 'once in a blue moon' means something happens:", options: ["Every night when the moon is full", "Very rarely", "Only when the moon appears blue"], correctAnswer: "Very rarely", image: null },
+                { id: 'tv_s4q4', question: "If a task is 'a piece of cake', it is:", options: ["A delicious dessert", "Something very easy to do", "A small part of a larger task"], correctAnswer: "Something very easy to do", image: null },
+                { id: 'tv_s4q5', question: "To 'let the cat out of the bag' means to:", options: ["Release a pet from a container", "Reveal a secret accidentally", "Buy a new cat"], correctAnswer: "Reveal a secret accidentally", image: null },
+                { id: 'tv_s4q6', question: "The proverb 'Actions speak louder than words' implies that:", options: ["Speaking clearly is most important.", "What you do is more significant than what you say.", "You should always act before speaking."], correctAnswer: "What you do is more significant than what you say.", image: null },
+                { id: 'tv_s4q7', question: "To 'hit the nail on the head' means to:", options: ["Be exactly right about something", "Perform poorly in carpentry", "Miss an important point"], correctAnswer: "Be exactly right about something", image: null },
+                { id: 'tv_s4q8', question: "The expression 'when pigs fly' is used to describe something that:", options: ["Is a common farm occurrence", "Will never happen", "Is a new scientific discovery"], correctAnswer: "Will never happen", image: null },
+                { id: 'tv_s4q9', question: "If someone is 'on cloud nine', they are:", options: ["Feeling very confused", "Extremely happy and joyful", "Observing clouds from a high place"], correctAnswer: "Extremely happy and joyful", image: null },
+                { id: 'tv_s4q10', question: "To 'kill two birds with one stone' means to:", options: ["Be an expert marksman", "Achieve two aims with a single action or effort", "Engage in harmful activities"], correctAnswer: "Achieve two aims with a single action or effort", image: null },
+                { id: 'tv_s4q11', question: "What does 'the early bird catches the worm' suggest?", options: ["Birds have a specific diet.", "Arriving early or taking action promptly leads to success.", "Worms are difficult to find."], correctAnswer: "Arriving early or taking action promptly leads to success.", image: null },
+                { id: 'tv_s4q12', question: "To 'spill the beans' means to:", options: ["Make a mess while cooking", "Reveal secret information unintentionally", "Share your food with others"], correctAnswer: "Reveal secret information unintentionally", image: null },
+                { id: 'tv_s4q13', question: "Saying 'Break a leg!' to an actor before a performance means:", options: ["You wish them harm.", "Good luck!", "Be careful not to fall."], correctAnswer: "Good luck!", image: null },
+                { id: 'tv_s4q14', question: "The proverb 'Don't judge a book by its cover' advises us to:", options: ["Always choose books with attractive covers.", "Not form an opinion based on outward appearance alone.", "Read every book thoroughly."], correctAnswer: "Not form an opinion based on outward appearance alone.", image: null },
+                { id: 'tv_s4q15', question: "If something 'costs an arm and a leg', it is:", options: ["Very cheap or affordable", "Extremely expensive", "A medical procedure"], correctAnswer: "Extremely expensive", image: null },
+                { id: 'tv_s4q16', question: "'Practice makes perfect' means that:", options: ["Perfection is unattainable.", "Regularly doing something helps you become skilled at it.", "You should only practice things you are already good at."], correctAnswer: "Regularly doing something helps you become skilled at it.", image: null },
+                { id: 'tv_s4q17', question: "To feel 'under the weather' means to:", options: ["Enjoy rainy days", "Feel slightly unwell or ill", "Be hiding from a storm"], correctAnswer: "Feel slightly unwell or ill", image: null },
+                { id: 'tv_s4q18', question: "The saying 'Two heads are better than one' suggests that:", options: ["Having a large head is advantageous.", "Collaboration often leads to better solutions.", "One person can never solve a problem alone."], correctAnswer: "Collaboration often leads to better solutions.", image: null },
+                { id: 'tv_s4q19', question: "If two people 'see eye to eye', they:", options: ["Are looking directly at each other", "Agree with each other completely", "Have similar eyesight"], correctAnswer: "Agree with each other completely", image: null },
+                { id: 'tv_s4q20', question: "When 'the ball is in your court', it means:", options: ["You have won the game.", "It is your responsibility to take the next action or make a decision.", "You are physically on a tennis court."], correctAnswer: "It is your responsibility to take the next action or make a decision.", image: null }
+            ],
+            // --- SET 5: Transition Words and Connectors ---
+            [
+                { id: 'tv_s5q1', question: "Which transition word is best used to show CONTRAST between two ideas?", options: ["Therefore", "However", "Additionally"], correctAnswer: "However", image: null },
+                { id: 'tv_s5q2', question: "To ADD more information or support a point, you can use:", options: ["Consequently", "Furthermore", "For example"], correctAnswer: "Furthermore", image: null },
+                { id: 'tv_s5q3', question: "Which of these words indicates a RESULT or EFFECT of a previous statement?", options: ["Meanwhile", "As a result", "Firstly"], correctAnswer: "As a result", image: null },
+                { id: 'tv_s5q4', question: "To show the SEQUENCE of events (what comes next), a suitable word is:", options: ["In contrast", "Next", "Similarly"], correctAnswer: "Next", image: null },
+                { id: 'tv_s5q5', question: "The phrase 'For instance' is used to:", options: ["Conclude an argument", "Provide a specific example", "Show an opposing viewpoint"], correctAnswer: "Provide a specific example", image: null },
+                { id: 'tv_s5q6', question: "Which connector best shows SIMILARITY or comparison between two points?", options: ["Nevertheless", "Likewise", "Otherwise"], correctAnswer: "Likewise", image: null },
+                { id: 'tv_s5q7', question: "To EMPHASIZE a particular point, you could use the word:", options: ["In summary", "Indeed", "On the other hand"], correctAnswer: "Indeed", image: null },
+                { id: 'tv_s5q8', question: "'Meanwhile' is used to indicate that something is happening:", options: ["As a direct consequence", "At the same time as another event", "Much later than another event"], correctAnswer: "At the same time as another event", image: null },
+                { id: 'tv_s5q9', question: "Which transition word shows a CAUSE or REASON for something?", options: ["Although", "Because", "Finally"], correctAnswer: "Because", image: null },
+                { id: 'tv_s5q10', question: "To CONCLUDE or SUMMARISE your main points, a good phrase is:", options: ["To begin with", "In conclusion", "For instance"], correctAnswer: "In conclusion", image: null },
+                { id: 'tv_s5q11', question: "The word 'Despite' is used to show:", options: ["Agreement with a point", "A reason for something", "Contrast or concession (something is true even though something else is true)"], correctAnswer: "Contrast or concession (something is true even though something else is true)", image: null },
+                { id: 'tv_s5q12', question: "'Moreover' is a transition word used to:", options: ["Introduce an opposing idea", "Add another related point or piece of information", "Indicate a specific time sequence"], correctAnswer: "Add another related point or piece of information", image: null },
+                { id: 'tv_s5q13', question: "Which phrase introduces an ALTERNATIVE or a different option?", options: ["In addition", "Instead of", "As a result of"], correctAnswer: "Instead of", image: null },
+                { id: 'tv_s5q14', question: "The word 'Subsequently' means:", options: ["Happening before something else", "Occurring at the exact same time", "Happening after or later than something else"], correctAnswer: "Happening after or later than something else", image: null },
+                { id: 'tv_s5q15', question: "To introduce a CONDITION for something to happen, you can use:", options: ["Therefore", "If", "Also"], correctAnswer: "If", image: null },
+                { id: 'tv_s5q16', question: "'On the contrary' is used to:", options: ["Express strong agreement", "Introduce a statement that directly contradicts a previous one", "Provide a supporting example"], correctAnswer: "Introduce a statement that directly contradicts a previous one", image: null },
+                { id: 'tv_s5q17', question: "The word 'Hence' is a formal way of saying:", options: ["In the past", "For this reason; therefore", "Perhaps or maybe"], correctAnswer: "For this reason; therefore", image: null },
+                { id: 'tv_s5q18', question: "To ILLUSTRATE a point with more detail, you could use:", options: ["Nevertheless", "Specifically", "To sum up"], correctAnswer: "Specifically", image: null },
+                { id: 'tv_s5q19', question: "'While' can be used to show contrast (similar to 'although') or to indicate:", options: ["A strong cause", "Two actions happening at the same time", "A final concluding remark"], correctAnswer: "Two actions happening at the same time", image: null },
+                { id: 'tv_s5q20', question: "The phrase 'In other words' is used to:", options: ["Introduce a completely new topic", "Disagree with what was just said", "Explain something more clearly or restate it in a different way"], correctAnswer: "Explain something more clearly or restate it in a different way", image: null }
+            ]
+        ];
+
+        const TOTAL_SETS_AVAILABLE = allThemedVocabQuestionsBySet.length;
+
+
+        // --- State Variables ---
+        let questionSets = []; 
+        let currentSetData = []; 
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let incorrectAnswers = [];
+        let startTime;
+        let endTime;
+        let isRedoing = false;
+        let proceedTimeoutId = null;
+        let isWaitingToProceed = false;
+        let selectedSetNumberGlobal = 0; 
+        let WEBHOOK_URL = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL;
+        let userName = localStorage.getItem(USER_NAME_STORAGE_KEY) || '';
+
+        // --- Sound Synthesis (Tone.js) ---
+        const correctSound = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.2 }, }).toDestination();
+        const incorrectSound = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.2 } }).toDestination();
+
+        // --- Confetti ---
+        const confettiCanvas = document.getElementById('confettiCanvas');
+        const myConfetti = confetti.create(confettiCanvas, { resize: true, useWorker: true });
+
+        // --- DOM Elements ---
+        const nameModal = document.getElementById('nameModal');
+        const userNameInput = document.getElementById('userNameInput');
+        const setSelectionScreen = document.getElementById('setSelectionScreen');
+        const setButtonsContainer = document.getElementById('setButtonsContainer');
+        const flashcardScreen = document.getElementById('flashcardScreen');
+        const resultsScreen = document.getElementById('resultsScreen');
+        const progressText = document.getElementById('progressText');
+        const progressBarFill = document.getElementById('progressBarFill');
+        const flashcard = document.getElementById('flashcard');
+        const questionImageEl = document.getElementById('questionImage');
+        const questionText = document.getElementById('questionText');
+        const feedbackText = document.getElementById('feedbackText');
+        const continueText = document.getElementById('continueText');
+        const choiceButtons = [ document.getElementById('choice1'), document.getElementById('choice2'), document.getElementById('choice3') ];
+        const scoreDisplayEl = document.getElementById('scoreDisplay');
+        const percentageEl = document.getElementById('percentage');
+        const timeTakenEl = document.getElementById('timeTaken');
+        const incorrectListContainer = document.getElementById('incorrectListContainer');
+        const incorrectList = document.getElementById('incorrectList');
+        const noIncorrectText = document.getElementById('noIncorrectText');
+        const redoIncorrectButton = document.getElementById('redoIncorrectButton');
+        const webhookModal = document.getElementById('webhookModal');
+        const webhookUrlInput = document.getElementById('webhookUrlInput');
+        const encouragementTextEl = document.getElementById('encouragementText');
+        const resultsHeadingEl = document.getElementById('resultsHeading');
+        const raceTrackContainer = document.querySelector('#resultsScreen .race-track-container');
+        const raceTrackFillEl = document.getElementById('raceTrackFill');
+        const rocketEl = document.getElementById('rocketEl');
+
+
+        flashcard.addEventListener('click', () => { if (isWaitingToProceed) proceedToNext(); });
+        userNameInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') { event.preventDefault(); saveUserName(); }});
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        function populateSetButtons() {
+            setButtonsContainer.innerHTML = ''; 
+            const setColors = [
+                'bg-blue-500 hover:bg-blue-600',    // Emotions
+                'bg-green-500 hover:bg-green-600',  // Descriptive
+                'bg-yellow-500 hover:bg-yellow-600 text-slate-800', // Action Verbs (text color adjusted for yellow)
+                'bg-purple-500 hover:bg-purple-600',// Idioms
+                'bg-pink-500 hover:bg-pink-600'     // Transitions
+            ];
+            const setNames = [
+                "Set 1: Emotions & Feelings",
+                "Set 2: Descriptive Language",
+                "Set 3: Action Verbs",
+                "Set 4: Idioms & Proverbs",
+                "Set 5: Transition Words"
+            ];
+
+            allThemedVocabQuestionsBySet.forEach((set, index) => {
+                if (set.length >= QUESTIONS_PER_SET) { 
+                    const button = document.createElement('button');
+                    button.textContent = setNames[index] || `Set ${index + 1}`;
+                    // Apply text-white unless it's the yellow button
+                    const textColorClass = setColors[index % setColors.length].includes('text-slate-800') ? '' : 'text-white';
+                    button.className = `action-button w-full py-3 px-6 ${setColors[index % setColors.length]} ${textColorClass}`;
+                    button.onclick = () => selectSet(index + 1);
+                    setButtonsContainer.appendChild(button);
+                }
+            });
+        }
+
+
+        function prepareQuestionSets() {
+            questionSets = allThemedVocabQuestionsBySet.map(set => {
+                if (set.length >= QUESTIONS_PER_SET) {
+                    let setToShuffle = [...set]; 
+                    shuffleArray(setToShuffle); 
+                    return setToShuffle.slice(0, QUESTIONS_PER_SET); 
+                }
+                return []; 
+            }).filter(set => set.length === QUESTIONS_PER_SET); 
+
+             if (questionSets.length < allThemedVocabQuestionsBySet.length) {
+                console.warn(`Some predefined sets did not meet the ${QUESTIONS_PER_SET} question requirement.`);
+             }
+             console.log(`Prepared ${questionSets.length} valid themed vocabulary sets for play.`);
+        }
+
+
+         function saveUserName() {
+            const name = userNameInput.value.trim();
+            userName = name ? name : 'Anonymous';
+            localStorage.setItem(USER_NAME_STORAGE_KEY, userName);
+            nameModal.style.display = 'none';
+            showSetSelection();
+        }
+
+
+        function selectSet(setNumber) { 
+            Tone.start().catch(e => console.warn("Audio context error:", e));
+
+            if (setNumber < 1 || setNumber > questionSets.length) {
+                alert(`Set ${setNumber} is not available. Please check console.`);
+                console.error(`Invalid set number: ${setNumber}. Available sets: ${questionSets.length}`);
+                return;
+            }
+            currentSetData = [...questionSets[setNumber - 1]]; 
+            selectedSetNumberGlobal = setNumber;
+
+            currentQuestionIndex = 0;
+            score = 0;
+            incorrectAnswers = [];
+            isRedoing = false;
+            
+            setSelectionScreen.classList.add('hidden');
+            resultsScreen.classList.add('hidden');
+            flashcardScreen.classList.remove('hidden');
+            startTime = new Date();
+            displayQuestion();
+        }
+
+        function resetCardState() {
+            if (proceedTimeoutId) { clearTimeout(proceedTimeoutId); proceedTimeoutId = null; }
+            isWaitingToProceed = false;
+            flashcard.classList.remove('shake', 'correct-flip', 'incorrect-state', 'clickable-card');
+            flashcard.style.backgroundColor = ''; flashcard.style.color = '';
+            questionText.style.color = ''; feedbackText.style.color = '';
+            feedbackText.textContent = '';
+            feedbackText.className = 'mt-2 text-base md:text-lg font-semibold';
+            flashcard.style.cursor = 'default';
+            continueText.classList.add('hidden');
+            questionImageEl.classList.add('hidden'); questionImageEl.src = '';
+        }
+
+        function displayQuestion() {
+            resetCardState();
+            if (currentQuestionIndex >= currentSetData.length) { showResults(); return; }
+
+            const questionData = currentSetData[currentQuestionIndex];
+            questionText.textContent = questionData.question;
+            if (questionData.image) { questionImageEl.src = questionData.image; questionImageEl.classList.remove('hidden'); }
+            
+            let displayOptions = [...questionData.options];
+            shuffleArray(displayOptions); 
+
+            choiceButtons.forEach((button, index) => {
+                button.textContent = displayOptions[index];
+                button.disabled = false;
+                button.dataset.answer = displayOptions[index];
+                button.className = 'choice-button bg-slate-100 hover:bg-slate-200 text-slate-700 text-base md:text-lg';
+            });
+            updateProgress();
+        }
+        
+        function updateProgress() {
+            const totalQuestions = currentSetData.length;
+            const completed = currentQuestionIndex;
+            const progressPercentage = totalQuestions > 0 ? (completed / totalQuestions) * 100 : 0;
+            progressText.textContent = `${completed} / ${totalQuestions}`;
+            progressBarFill.style.width = `${progressPercentage}%`;
+        }
+
+        function checkAnswer(button) {
+            Tone.start().catch(e => console.warn("Audio context failed to start:", e));
+            if (isWaitingToProceed) return;
+
+            const selectedAnswer = button.dataset.answer;
+            const questionData = currentSetData[currentQuestionIndex];
+            const correctAnswer = questionData.correctAnswer;
+
+            choiceButtons.forEach(btn => btn.disabled = true);
+
+            if (selectedAnswer === correctAnswer) {
+                if (!isRedoing) score++;
+                flashcard.classList.add('correct-flip');
+                feedbackText.textContent = 'Correct!';
+                button.className = 'choice-button bg-emerald-500 text-white ring-2 ring-emerald-700 text-base md:text-lg';
+                myConfetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+                correctSound.triggerAttackRelease("G5", "8n", Tone.now());
+            } else {
+                flashcard.classList.add('shake', 'incorrect-state');
+                feedbackText.innerHTML = `Correct Answer: <span class="font-bold">${correctAnswer}</span>`;
+                button.className = 'choice-button bg-red-500 text-white ring-2 ring-red-700 text-base md:text-lg';
+                choiceButtons.forEach(btn => {
+                     if (btn.dataset.answer === correctAnswer) {
+                         btn.className = 'choice-button bg-emerald-100 border-2 border-emerald-400 text-emerald-700 font-bold text-base md:text-lg opacity-90';
+                     }
+                });
+                incorrectSound.triggerAttackRelease("C3", "8n");
+                incorrectAnswers.push({ questionData: JSON.parse(JSON.stringify(questionData)), userAnswer: selectedAnswer });
+            }
+            isWaitingToProceed = true;
+            flashcard.classList.add('clickable-card'); flashcard.style.cursor = 'pointer';
+            continueText.classList.remove('hidden');
+            if (proceedTimeoutId) clearTimeout(proceedTimeoutId);
+            proceedTimeoutId = setTimeout(proceedToNext, AUTO_PROCEED_DELAY);
+            currentQuestionIndex++;
+        }
+
+        function proceedToNext() {
+             if (proceedTimeoutId) { clearTimeout(proceedTimeoutId); proceedTimeoutId = null; }
+             isWaitingToProceed = false;
+             displayQuestion();
+        }
+
+        function showResults() {
+            endTime = new Date();
+            const timeDiff = Math.round((endTime - startTime) / 1000);
+            const totalQuestions = currentSetData.length;
+            const currentScore = isRedoing ? (totalQuestions - incorrectAnswers.length) : score;
+            const percentage = totalQuestions > 0 ? Math.round((currentScore / totalQuestions) * 100) : 0;
+
+            resultsHeadingEl.textContent = isRedoing ? 'Review Complete!' : `Set ${selectedSetNumberGlobal} Complete!`;
+            scoreDisplayEl.textContent = `${currentScore} / ${totalQuestions}`;
+            percentageEl.textContent = `${percentage}`;
+            timeTakenEl.textContent = `${timeDiff}s`;
+
+            if (percentage === 100) encouragementTextEl.textContent = isRedoing ? "Perfect review!" : "Amazing! Your vocabulary is shining!";
+            else if (percentage >= 70) encouragementTextEl.textContent = isRedoing ? "Good review!" : "Excellent progress! Keep learning new words!";
+            else encouragementTextEl.textContent = isRedoing ? "Keep reviewing!" : "Good start! Consistent practice builds a strong vocabulary!";
+            encouragementTextEl.className = `text-lg font-semibold mb-6 ${percentage === 100 ? 'text-emerald-700' : percentage >= 70 ? 'text-indigo-700' : 'text-orange-700'}`; 
+
+            flashcardScreen.classList.add('hidden');
+            resultsScreen.classList.remove('hidden');
+
+            const trackWidth = raceTrackContainer.offsetWidth, effectiveTrackWidth = trackWidth - 24;
+            const animationDuration = 1500, animStartTime = performance.now();
+            rocketEl.style.left = '0px'; raceTrackFillEl.style.width = '0px';
+            function animateRocket(currentTime) {
+                const elapsedTime = currentTime - animStartTime, progress = Math.min(elapsedTime / animationDuration, 1);
+                const animatedPercentage = Math.round(progress * percentage);
+                const position = Math.max(0, (animatedPercentage / 100) * effectiveTrackWidth);
+                rocketEl.style.left = `${position}px`; raceTrackFillEl.style.width = `${position}px`;
+                if (progress < 1) requestAnimationFrame(animateRocket);
+                else {
+                     const finalPos = Math.max(0, (percentage / 100) * effectiveTrackWidth);
+                     rocketEl.style.left = `${finalPos}px`; raceTrackFillEl.style.width = `${finalPos}px`;
+                }
+            }
+            requestAnimationFrame(animateRocket);
+
+            incorrectList.innerHTML = '';
+            if (incorrectAnswers.length > 0) {
+                incorrectListContainer.classList.remove('hidden'); noIncorrectText.classList.add('hidden');
+                incorrectAnswers.forEach(item => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<b>Q:</b> ${item.questionData.question}<br/>` +
+                                   `<b>Your:</b> <span class="text-red-500">${item.userAnswer}</span><br/>` +
+                                   `<b>Correct:</b> <span class="text-emerald-600">${item.questionData.correctAnswer}</span>`;
+                    incorrectList.appendChild(li);
+                });
+                redoIncorrectButton.classList.toggle('hidden', isRedoing);
+            } else {
+                incorrectListContainer.classList.add('hidden'); noIncorrectText.classList.remove('hidden');
+                redoIncorrectButton.classList.add('hidden');
+            }
+
+            sendResultsToWebhook({
+                name: userName, topic: "Themed Vocabulary", set: selectedSetNumberGlobal, score: currentScore, totalQuestions, percentage, timeTaken: timeDiff,
+                incorrectAnswersData: incorrectAnswers.map(i => ({ q: i.questionData.question, u: i.userAnswer, c: i.questionData.correctAnswer })),
+                isRedoing, os: navigator.platform || 'N/A', deviceTime: new Date().toString(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'N/A'
+            });
+            if (isRedoing) { incorrectAnswers = []; isRedoing = false; }
+        }
+
+        function redoIncorrect() {
+            const questionsToRedo = incorrectAnswers.map(item => item.questionData);
+            if (questionsToRedo.length === 0) { alert("No incorrect answers to redo!"); return; }
+            currentSetData = questionsToRedo;
+            shuffleArray(currentSetData); 
+            currentQuestionIndex = 0;
+            incorrectAnswers = []; 
+            isRedoing = true;
+            resultsScreen.classList.add('hidden'); flashcardScreen.classList.remove('hidden');
+            startTime = new Date();
+            displayQuestion();
+        }
+
+        function showSetSelection() {
+            if (proceedTimeoutId) { clearTimeout(proceedTimeoutId); proceedTimeoutId = null; }
+            isWaitingToProceed = false; isRedoing = false;
+            nameModal.style.display = 'none';
+            flashcardScreen.classList.add('hidden'); resultsScreen.classList.add('hidden');
+            setSelectionScreen.classList.remove('hidden');
+            progressText.textContent = `0 / ${QUESTIONS_PER_SET}`; progressBarFill.style.width = '0%';
+            prepareQuestionSets(); 
+            populateSetButtons();  
+            if (!document.getElementById('webhookSettingsButton')) addWebhookSettingsButton();
+        }
+
+        function sendResultsToWebhook(data) {
+            if (!WEBHOOK_URL || (WEBHOOK_URL === DEFAULT_WEBHOOK_URL && !localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) && DEFAULT_WEBHOOK_URL.includes('xxxx'))) {
+                if (!localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) && DEFAULT_WEBHOOK_URL.includes('xxxx')) {
+                   console.log("Webhook URL is a placeholder or not set. Skipping."); return;
+                }
+           }
+           if (!navigator.onLine) { console.warn("Offline. Skipping webhook."); return; }
+           fetch(WEBHOOK_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', }, body: JSON.stringify(data), })
+           .then(res => res.ok ? res.json().catch(()=>res.text()) : res.text().then(t => { throw new Error(`Webhook Error ${res.status}: ${t}`) }))
+           .then(d => console.log('Webhook success:', d)).catch(e => console.error('Webhook fetch error:', e));
+        }
+        function openWebhookModal() {
+            webhookUrlInput.value = (WEBHOOK_URL === DEFAULT_WEBHOOK_URL && !localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) && DEFAULT_WEBHOOK_URL.includes('xxxx')) ? '' : WEBHOOK_URL;
+            webhookModal.style.display = 'flex';
+        }
+        function closeWebhookModal() { webhookModal.style.display = 'none'; }
+        function saveWebhookUrl() {
+            const url = webhookUrlInput.value.trim();
+            try {
+                if (url) { new URL(url); WEBHOOK_URL = url; localStorage.setItem(WEBHOOK_URL_STORAGE_KEY, url); }
+                else { WEBHOOK_URL = DEFAULT_WEBHOOK_URL; localStorage.removeItem(WEBHOOK_URL_STORAGE_KEY); }
+                closeWebhookModal();
+            } catch (_) {
+                 if (url.startsWith('https://hook.') && (url.includes('.make.com/') || url.includes('.integromat.com/'))) {
+                    WEBHOOK_URL = url; localStorage.setItem(WEBHOOK_URL_STORAGE_KEY, url); closeWebhookModal();
+                 } else { alert("Invalid URL. Please enter a valid webhook URL."); }
+            }
+        }
+        function addWebhookSettingsButton() {
+            if (document.getElementById('webhookSettingsButton')) return;
+            const btn = document.createElement('button');
+            btn.textContent = 'Webhook Settings'; btn.id = 'webhookSettingsButton';
+            btn.className = 'action-button mt-6 bg-slate-400 hover:bg-slate-500 text-white w-full text-sm py-3 px-6';
+            btn.onclick = openWebhookModal;
+            const container = document.getElementById('setSelectionScreen');
+            if (container) { 
+                container.appendChild(btn);
+            }
+        }
+
+         document.addEventListener('DOMContentLoaded', () => {
+            prepareQuestionSets(); 
+            populateSetButtons();  
+
+            if (questionSets.length === 0) { 
+                document.body.innerHTML = `<div class="text-center p-8 bg-red-100 text-red-700">
+                    <h1 class="text-2xl font-bold">Error: No Valid Question Sets</h1>
+                    <p>Please ensure 'allThemedVocabQuestionsBySet' in the script has sets with at least ${QUESTIONS_PER_SET} questions each.</p>
+                </div>`;
+                return;
+            }
+            userName = localStorage.getItem(USER_NAME_STORAGE_KEY) || '';
+            if (userName) showSetSelection();
+            else { nameModal.style.display = 'flex'; userNameInput.focus(); }
+            addWebhookSettingsButton();
+         });
+    </script>
+</body>
+</html>
