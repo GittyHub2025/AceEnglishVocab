@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Advanced PSLE Vocabulary Booster</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overscroll-behavior: none;
+            -webkit-tap-highlight-color: transparent; /* Prevent tap highlight on mobile */
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-8px); }
+            20%, 40%, 60%, 80% { transform: translateX(8px); }
+        }
+        .shake { animation: shake 0.5s ease-in-out; }
+
+        /* Vertical Flip Animation for Correct Answer */
+        @keyframes vertical-flip-reveal {
+            0% {
+                transform: perspective(1000px) rotateX(0deg);
+                background-color: white;
+                color: #374151; /* Default text color (e.g., gray-700) */
+            }
+            49% {
+                transform: perspective(1000px) rotateX(-90deg);
+                background-color: white;
+                color: #374151;
+            }
+            50% { /* Content invisible, switch properties */
+                transform: perspective(1000px) rotateX(-90deg);
+                background-color: #22c55e; /* Green-500 */
+                color: white;
+            }
+            100% {
+                transform: perspective(1000px) rotateX(0deg);
+                background-color: #22c55e; /* Green-500 */
+                color: white;
+            }
+        }
+        .correct-flip {
+            animation: vertical-flip-reveal 0.6s forwards;
+        }
+        .correct-flip #questionText,
+        .correct-flip #feedbackText,
+        .correct-flip #questionImagePlaceholder {
+            color: white !important;
+        }
+
+        /* Incorrect Answer State */
+        .incorrect-state {
+            background-color: #ef4444; /* Red-500 */
+            color: white;
+            border-color: #b91c1c !important; /* Red-700 for border */
+        }
+        .incorrect-state #questionText,
+        .incorrect-state #feedbackText,
+        .incorrect-state #questionImagePlaceholder {
+            color: white !important;
+        }
+
+
+        /* Button base styles */
+        .choice-button, .action-button {
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            border-radius: 0.5rem;
+            font-weight: 600;
+            padding: 0.75rem 0.5rem;
+            text-align: center;
+            border: 1px solid transparent; /* Base border */
+        }
+        /* Button hover/active states */
+        .choice-button:hover, .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.12);
+        }
+        .choice-button:active, .action-button:active {
+            transform: translateY(0px);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .choice-button:disabled {
+            opacity: 0.8;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .choice-button:disabled:hover {
+             transform: none;
+             box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        }
+
+
+        .clickable-card { cursor: pointer; }
+        #progressBarFill { transition: width 0.3s ease-out; }
+        #confettiCanvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); align-items: center; justify-content: center; }
+        .modal-content { background-color: #fefefe; margin: auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 0.5rem; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        .modal-close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .modal-close-button:hover, .modal-close-button:focus { color: black; text-decoration: none; cursor: pointer; }
+
+        .race-track-container { position: relative; width: 100%; height: 30px; margin-top: 20px; margin-bottom: 20px; z-index: 1; }
+        .race-track { position: absolute; bottom: 0; left: 0; width: calc(100% - 30px); height: 10px; background-color: #d1d5db; border-radius: 5px; z-index: 2; }
+        .race-track-fill { position: absolute; bottom: 0; left: 0; height: 10px; background-color: #3b82f6; border-radius: 5px; width: 0%; z-index: 3; }
+        .rocket { position: absolute; bottom: -8px; left: 0; font-size: 36px; transform: translateX(-50%); z-index: 10; }
+        .checkered-flag { position: absolute; bottom: -8px; right: 0; font-size: 24px; transform: translateX(50%); z-index: 10; }
+
+        #questionText { word-break: break-word; hyphens: auto; }
+        .choice-button { white-space: normal; word-break: break-word; line-height: 1.4; min-height: 60px; display: flex; align-items: center; justify-content: center; }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gradient-to-br from-rose-200 via-amber-200 to-lime-200 min-h-screen flex items-center justify-center p-4">
+
+    <div id="appContainer" class="w-full max-w-md mx-auto">
+
+        <!-- Name Input Modal -->
+         <div id="nameModal" class="modal">
+             <div class="modal-content text-center">
+                 <h2 class="text-xl md:text-2xl font-semibold mb-4 text-amber-800">Welcome, Vocabulary Virtuoso!</h2>
+                 <p class="text-slate-600 mb-4">Please enter your name to get started.</p>
+                 <input type="text" id="userNameInput" placeholder="Your Name" class="w-full p-2 border border-slate-300 rounded mb-4 focus:ring-amber-500 focus:border-amber-500 text-center text-lg">
+                 <button onclick="saveUserName()" class="action-button bg-amber-500 hover:bg-amber-600 text-white w-full py-3 px-6 text-lg">Boost My Vocabulary!</button>
+             </div>
+         </div>
+
+        <!-- Set Selection Screen -->
+        <div id="setSelectionScreen" class="hidden bg-white p-6 md:p-8 rounded-xl shadow-lg text-center">
+            <h1 class="text-2xl md:text-3xl font-bold text-amber-800 mb-6">Advanced PSLE Vocabulary Booster</h1>
+            <p class="text-slate-600 mb-8">Choose a category to enhance your descriptive power:</p>
+            <div id="setButtonsContainer" class="grid grid-cols-1 gap-4">
+                <!-- Set buttons will be dynamically added here by JS -->
+            </div>
+             <!-- Webhook settings button will be added below this container by JS -->
+        </div>
+
+        <!-- Flashcard Screen -->
+        <div id="flashcardScreen" class="hidden bg-white p-6 md:p-8 rounded-xl shadow-lg">
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-sm font-medium text-slate-600">Progress</span>
+                    <span id="progressText" class="text-sm font-medium text-amber-700">0 / 20</span> </div>
+                <div class="w-full bg-slate-200 rounded-full h-2.5">
+                    <div id="progressBarFill" class="bg-amber-600 h-2.5 rounded-full" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="flashcard" class="bg-white border border-slate-300 rounded-lg p-6 mb-6 text-center min-h-[200px] flex flex-col items-center justify-center transition-all duration-200">
+                 <div id="flashcardContent" class="w-full">
+                     <img id="questionImage" src="" alt="Question image" class="hidden mx-auto mb-4 max-h-40 h-auto w-auto object-contain rounded">
+                     <p id="questionText" class="text-lg md:text-xl font-semibold text-slate-800"></p>
+                     <p id="feedbackText" class="mt-2 text-base md:text-lg font-semibold"></p>
+                     <p id="continueText" class="mt-4 text-sm text-slate-500 hidden">Tap card to continue...</p>
+                 </div>
+            </div>
+
+            <div id="answerChoices" class="grid grid-cols-1 gap-3 md:gap-4">
+                <button id="choice1" onclick="checkAnswer(this)" class="choice-button bg-slate-100 hover:bg-slate-200 text-slate-700 text-base md:text-lg"></button>
+                <button id="choice2" onclick="checkAnswer(this)" class="choice-button bg-slate-100 hover:bg-slate-200 text-slate-700 text-base md:text-lg"></button>
+                <button id="choice3" onclick="checkAnswer(this)" class="choice-button bg-slate-100 hover:bg-slate-200 text-slate-700 text-base md:text-lg"></button>
+            </div>
+             <button onclick="showSetSelection()" class="action-button mt-6 bg-slate-500 hover:bg-slate-600 text-white w-full text-sm py-3 px-6">Back to Set Selection</button>
+        </div>
+
+        <!-- Results Screen -->
+        <div id="resultsScreen" class="hidden bg-white p-6 md:p-8 rounded-xl shadow-lg text-center">
+            <h2 id="resultsHeading" class="text-2xl md:text-3xl font-bold text-amber-800 mb-4"></h2>
+
+            <div class="bg-emerald-500 text-white p-4 rounded-lg mb-6">
+                <p class="text-lg md:text-xl font-semibold mb-1">Your Score:</p>
+                <p id="scoreDisplay" class="text-4xl md:text-5xl font-bold italic"></p>
+            </div>
+
+            <div class="race-track-container">
+                <div class="race-track"></div>
+                <div id="raceTrackFill" class="race-track-fill"></div>
+                <span id="rocketEl" class="rocket">🚀</span>
+                <span id="checkeredFlag" class="checkered-flag">🏁</span>
+            </div>
+            <p class="text-lg text-slate-700 mb-2">Percentage: <span id="percentage" class="font-semibold"></span>%</p>
+            <p class="text-lg text-slate-700 mb-6">Time: <span id="timeTaken" class="font-semibold"></span> seconds</p>
+
+            <p id="encouragementText" class="text-lg text-amber-700 font-semibold mb-6"></p>
+            <div id="incorrectListContainer" class="mb-6 text-left">
+                <h3 class="text-xl font-semibold text-red-600 mb-3">Review Incorrect Answers:</h3>
+                <ul id="incorrectList" class="list-disc list-inside space-y-1 text-slate-600"></ul>
+                 <p id="noIncorrectText" class="text-emerald-600 font-semibold hidden">Great job, no incorrect answers!</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button id="redoIncorrectButton" onclick="redoIncorrect()" class="action-button bg-orange-500 hover:bg-orange-600 text-white w-full py-3 px-6">Redo Incorrect</button>
+                <button onclick="showSetSelection()" class="action-button bg-amber-500 hover:bg-amber-600 text-white w-full py-3 px-6">Choose New Set</button>
+            </div>
+        </div>
+
+        <!-- Webhook Settings Modal -->
+        <div id="webhookModal" class="modal">
+          <div class="modal-content">
+            <span class="modal-close-button" onclick="closeWebhookModal()">×</span>
+            <h2 class="text-xl font-semibold mb-4 text-amber-800">Webhook Setup</h2>
+            <p class="text-slate-600 mb-4">Enter your Make.com (or other service) webhook URL below to send results data automatically.</p>
+            <input type="url" id="webhookUrlInput" placeholder="https://hook.make.com/xxxxxxxxxxxx" class="w-full p-2 border border-slate-300 rounded mb-4 focus:ring-amber-500 focus:border-amber-500">
+             <p class="text-xs text-slate-500 mb-4">You can change this later if needed.</p>
+            <button onclick="saveWebhookUrl()" class="action-button bg-emerald-500 hover:bg-emerald-600 text-white py-2 px-4">Save URL</button>
+          </div>
+        </div>
+    </div>
+
+    <canvas id="confettiCanvas"></canvas>
+
+    <script>
+        // --- Configuration ---
+        const QUESTIONS_PER_SET = 20;
+        const AUTO_PROCEED_DELAY = 800;
+        const DEFAULT_WEBHOOK_URL = 'https://hook.us2.make.com/a71p0euydnnf2kxbsfwzm8oketpw6vyu'; // User's new webhook
+        const USER_NAME_STORAGE_KEY = 'advVocabBoosterUserName_v1'; // New key for this app version
+        const WEBHOOK_URL_STORAGE_KEY = 'advVocabBoosterWebhookUrl_v1'; // New key
+
+        // --- Advanced Vocabulary Questions Data ---
+        const allAdvancedVocabQuestionsBySet = [
+            // --- NEW SET 1: Advanced Emotions & Feelings (Part 1) ---
+            [
+                { id: 'av_s1q1', question: "Someone feeling 'blissful' is in a state of:", options: ["Mild annoyance", "Perfect happiness; great joy", "Deep concentration"], correctAnswer: "Perfect happiness; great joy", image: null },
+                { id: 'av_s1q2', question: "'Despondent' means feeling or showing:", options: ["Profound hopelessness or dejection", "Slight curiosity", "Extreme excitement"], correctAnswer: "Profound hopelessness or dejection", image: null },
+                { id: 'av_s1q3', question: "If a child is 'petulant', they are:", options: ["Patient and understanding", "Childishly sulky or bad-tempered", "Calm and mature"], correctAnswer: "Childishly sulky or bad-tempered", image: null },
+                { id: 'av_s1q4', question: "To be 'irate' is to feel or show:", options: ["Great anger", "Mild amusement", "Deep sadness"], correctAnswer: "Great anger", image: null },
+                { id: 'av_s1q5', question: "A person who is 'disgruntled' is:", options: ["Pleased and satisfied", "Angry or dissatisfied", "Calm and serene"], correctAnswer: "Angry or dissatisfied", image: null },
+                { id: 'av_s1q6', question: "To be 'captivated' by something means to be:", options: ["Bored by it", "Attracted and held by its charm or interest", "Confused by it"], correctAnswer: "Attracted and held by its charm or interest", image: null },
+                { id: 'av_s1q7', question: "If you are 'exhilarated', you feel:", options: ["Very happy, animated, or elated", "Tired and weary", "Slightly worried"], correctAnswer: "Very happy, animated, or elated", image: null },
+                { id: 'av_s1q8', question: "'Reverent' describes a feeling or attitude of:", options: ["Disrespect and scorn", "Deep and solemn respect", "Casual indifference"], correctAnswer: "Deep and solemn respect", image: null },
+                { id: 'av_s1q9', question: "To be 'anguished' is to experience:", options: ["Mild discomfort", "Severe mental or physical pain or suffering", "Peaceful contentment"], correctAnswer: "Severe mental or physical pain or suffering", image: null },
+                { id: 'av_s1q10', question: "Someone who is 'appalled' is filled with:", options: ["Great delight", "Horror or dismay", "Mild surprise"], correctAnswer: "Horror or dismay", image: null },
+                { id: 'av_s1q11', question: "'Pensive' means engaged in, involving, or reflecting:", options: ["Loud and boisterous activity", "Deep or serious thought", "Joyful celebration"], correctAnswer: "Deep or serious thought", image: null },
+                { id: 'av_s1q12', question: "If you are 'frazzled', you are likely feeling:", options: ["Completely relaxed", "Worn-out and disorganized due to stress", "Calm and collected"], correctAnswer: "Worn-out and disorganized due to stress", image: null },
+                { id: 'av_s1q13', question: "'Flustered' means to be:", options: ["Confident and composed", "Agitated or confused", "Calm and unconcerned"], correctAnswer: "Agitated or confused", image: null },
+                { id: 'av_s1q14', question: "A 'sheepish' grin often indicates:", options: ["Extreme confidence", "Embarrassment or shame", "Anger or frustration"], correctAnswer: "Embarrassment or shame", image: null },
+                { id: 'av_s1q15', question: "A 'defiant' stance suggests:", options: ["Willingness to obey", "Open resistance; bold disobedience", "Fear and submission"], correctAnswer: "Open resistance; bold disobedience", image: null },
+                { id: 'av_s1q16', question: "If someone is 'implacable', they are:", options: ["Easily satisfied or calmed", "Unable to be appeased or pacified", "Very friendly and agreeable"], correctAnswer: "Unable to be appeased or pacified", image: null },
+                { id: 'av_s1q17', question: "'Forlorn' describes a feeling of being:", options: ["Joyful and carefree", "Pitifully sad and abandoned or lonely", "Angry and aggressive"], correctAnswer: "Pitifully sad and abandoned or lonely", image: null },
+                { id: 'av_s1q18', question: "To be 'indifferent' to something means to:", options: ["Care deeply about it", "Have no particular interest or sympathy; be unconcerned", "Be very enthusiastic about it"], correctAnswer: "Have no particular interest or sympathy; be unconcerned", image: null },
+                { id: 'av_s1q19', question: "A 'fervent' supporter shows:", options: ["Little to no enthusiasm", "Passionate intensity", "Mild interest"], correctAnswer: "Passionate intensity", image: null },
+                { id: 'av_s1q20', question: "If you are 'reticent' about your plans, you are:", options: ["Eager to share them openly", "Not revealing your thoughts or feelings readily", "Loud and boastful about them"], correctAnswer: "Not revealing your thoughts or feelings readily", image: null }
+            ],
+            // --- NEW SET 2: Advanced Emotions & Feelings (Part 2) ---
+            [
+                { id: 'av_s2q1', question: "A 'rueful' smile often expresses:", options: ["Sincere joy", "Sorrow or regret, often in a humorous way", "Extreme anger"], correctAnswer: "Sorrow or regret, often in a humorous way", image: null },
+                { id: 'av_s2q2', question: "To be 'aghast' is to be filled with:", options: ["Mild amusement", "Horror or shock", "Calm acceptance"], correctAnswer: "Horror or shock", image: null },
+                { id: 'av_s2q3', question: "If someone is 'choleric', they are known to be:", options: ["Calm and patient", "Bad-tempered or irritable", "Cheerful and optimistic"], correctAnswer: "Bad-tempered or irritable", image: null },
+                { id: 'av_s2q4', question: "'Exultant' means feeling or showing:", options: ["Deep regret", "Triumphant elation or jubilation", "Mild disappointment"], correctAnswer: "Triumphant elation or jubilation", image: null },
+                { id: 'av_s2q5', question: "A person who is 'morose' is typically:", options: ["Sullen and ill-tempered", "Joyful and lively", "Energetic and enthusiastic"], correctAnswer: "Sullen and ill-tempered", image: null },
+                { id: 'av_s2q6', question: "To feel 'poignant' sorrow means the sorrow is:", options: ["Superficial and easily forgotten", "Keenly felt, evoking sadness or regret", "Mild and unimportant"], correctAnswer: "Keenly felt, evoking sadness or regret", image: null },
+                { id: 'av_s2q7', question: "If someone is 'smug', they are showing:", options: ["Genuine humility", "Excessive pride in oneself or one's achievements", "Deep empathy for others"], correctAnswer: "Excessive pride in oneself or one's achievements", image: null },
+                { id: 'av_s2q8', question: "To be 'tentative' about a plan suggests you are:", options: ["Fully committed and certain", "Not certain or fixed; hesitant", "Overly enthusiastic and impulsive"], correctAnswer: "Not certain or fixed; hesitant", image: null },
+                { id: 'av_s2q9', question: "A 'yearning' for something indicates a:", options: ["Strong feeling of dislike", "Deep longing or tender sadness", "Complete lack of interest"], correctAnswer: "Deep longing or tender sadness", image: null },
+                { id: 'av_s2q10', question: "'Vexed' is a synonym for:", options: ["Delighted", "Annoyed, frustrated, or worried", "Calm"], correctAnswer: "Annoyed, frustrated, or worried", image: null },
+                { id: 'av_s2q11', question: "A 'placid' lake is:", options: ["Stormy and turbulent", "Calm and peaceful, with little movement", "Frozen solid"], correctAnswer: "Calm and peaceful, with little movement", image: null }, // Can also relate to temperament
+                { id: 'av_s2q12', question: "If someone is 'inconsolable', they are:", options: ["Easily comforted", "Not able to be comforted or alleviated (of grief)", "Slightly sad but okay"], correctAnswer: "Not able to be comforted or alleviated (of grief)", image: null },
+                { id: 'av_s2q13', question: "To be 'ebullient' means to be:", options: ["Quiet and reserved", "Cheerful and full of energy", "Sad and withdrawn"], correctAnswer: "Cheerful and full of energy", image: null },
+                { id: 'av_s2q14', question: "'Contrite' describes someone who is:", options: ["Proud of their actions", "Feeling or expressing remorse; affected by guilt", "Angry and defensive"], correctAnswer: "Feeling or expressing remorse; affected by guilt", image: null },
+                { id: 'av_s2q15', question: "A 'sombre' occasion is usually:", options: ["Joyful and celebratory", "Serious, solemn, and gloomy", "Light-hearted and amusing"], correctAnswer: "Serious, solemn, and gloomy", image: null },
+                { id: 'av_s2q16', question: "To be 'eclectic' in taste means having ideas or style from:", options: ["Only one specific source", "A broad and diverse range of sources", "No sources at all"], correctAnswer: "A broad and diverse range of sources", image: null }, // General vocab, but can apply to how one feels about/selects things
+                { id: 'av_s2q17', question: "A 'frenetic' pace of activity is:", options: ["Slow and relaxed", "Fast and energetic, often in a wild and uncontrolled way", "Steady and methodical"], correctAnswer: "Fast and energetic, often in a wild and uncontrolled way", image: null },
+                { id: 'av_s2q18', question: "If someone is 'lugubrious', they appear or sound:", options: ["Excessively cheerful", "Sad and dismal, often exaggeratedly so", "Calm and composed"], correctAnswer: "Sad and dismal, often exaggeratedly so", image: null },
+                { id: 'av_s2q19', question: "To be 'sanguine' about the future means to be:", options: ["Pessimistic and doubtful", "Optimistic or positive, especially in a bad situation", "Indifferent and uncaring"], correctAnswer: "Optimistic or positive, especially in a bad situation", image: null },
+                { id: 'av_s2q20', question: "A 'wry' comment is one that is:", options: ["Direct and serious", "Using or expressing dry, especially mocking, humour", "Overly emotional and sentimental"], correctAnswer: "Using or expressing dry, especially mocking, humour", image: null }
+            ],
+            // --- NEW SET 3: Vivid Settings & Atmosphere ---
+            [
+                { id: 'av_s3q1', question: "A 'gloaming' sky refers to the time of:", options: ["Bright midday sun", "Twilight or dusk", "Pitch-black midnight"], correctAnswer: "Twilight or dusk", image: null },
+                { id: 'av_s3q2', question: "'Luminescent' objects:", options: ["Absorb all light", "Emit light not caused by heat (glow in the dark)", "Are completely transparent"], correctAnswer: "Emit light not caused by heat (glow in the dark)", image: null },
+                { id: 'av_s3q3', question: "A 'murky' pond has water that is:", options: ["Crystal clear", "Dark and dirty; not clear", "Shallow and warm"], correctAnswer: "Dark and dirty; not clear", image: null },
+                { id: 'av_s3q4', question: "The 'cacophony' of city traffic describes its:", options: ["Pleasant and melodious sounds", "Harsh, discordant mixture of sounds", "Complete silence"], correctAnswer: "Harsh, discordant mixture of sounds", image: null },
+                { id: 'av_s3q5', question: "'Dulcet' tones are sounds that are:", options: ["Loud and jarring", "Sweet and soothing", "High-pitched and annoying"], correctAnswer: "Sweet and soothing", image: null },
+                { id: 'av_s3q6', question: "If a sound is 'reverberating', it is:", options: ["Fading quickly", "Being repeated several times as an echo", "A very quiet whisper"], correctAnswer: "Being repeated several times as an echo", image: null },
+                { id: 'av_s3q7', question: "'Undulating' hills have a landscape that is:", options: ["Completely flat", "Rising and falling like waves", "Jagged and steep"], correctAnswer: "Rising and falling like waves", image: null },
+                { id: 'av_s3q8', question: "A 'gnarled' tree trunk is typically:", options: ["Smooth and straight", "Knobbly, rough, and twisted with age", "Young and slender"], correctAnswer: "Knobbly, rough, and twisted with age", image: null },
+                { id: 'av_s3q9', question: "An 'oppressive' silence in a room makes people feel:", options: ["Comfortable and relaxed", "Weighed down or distressed", "Joyful and talkative"], correctAnswer: "Weighed down or distressed", image: null },
+                { id: 'av_s3q10', question: "A 'tranquil' garden is:", options: ["Noisy and chaotic", "Free from disturbance; calm and peaceful", "Overgrown and wild"], correctAnswer: "Free from disturbance; calm and peaceful", image: null },
+                { id: 'av_s3q11', question: "A 'bustling' marketplace is:", options: ["Quiet and deserted", "Full of energetic and noisy activity", "Calm and orderly"], correctAnswer: "Full of energetic and noisy activity", image: null },
+                { id: 'av_s3q12', question: "An 'eerie' feeling in an old house suggests it is:", options: ["Warm and welcoming", "Strange and frightening; uncanny", "Bright and cheerful"], correctAnswer: "Strange and frightening; uncanny", image: null },
+                { id: 'av_s3q13', question: "'Torrential' rain is:", options: ["A light drizzle", "Falling rapidly and in copious quantities", "Intermittent and brief"], correctAnswer: "Falling rapidly and in copious quantities", image: null },
+                { id: 'av_s3q14', question: "'Balmy' weather is:", options: ["Freezing cold", "Pleasantly warm", "Stormy and windy"], correctAnswer: "Pleasantly warm", image: null },
+                { id: 'av_s3q15', question: "A 'zephyr' is a:", options: ["Strong, violent wind", "Soft, gentle breeze", "Cold, icy gust"], correctAnswer: "Soft, gentle breeze", image: null },
+                { id: 'av_s3q16', question: "'Ramshackle' describes a building that is:", options: ["Strong and well-built", "In a state of severe disrepair; rickety", "Modern and luxurious"], correctAnswer: "In a state of severe disrepair; rickety", image: null },
+                { id: 'av_s3q17', question: "A 'labyrinthine' network of caves means it is:", options: ["Straight and easy to navigate", "Irregular and twisting; intricate and confusing", "Small and shallow"], correctAnswer: "Irregular and twisting; intricate and confusing", image: null },
+                { id: 'av_s3q18', question: "The 'sheen' of polished silver refers to its:", options: ["Rough texture", "Soft, lustrous shine", "Dull appearance"], correctAnswer: "Soft, lustrous shine", image: null },
+                { id: 'av_s3q19', question: "A 'stifled' cry is one that is:", options: ["Loud and unrestrained", "Suppressed or held back", "Joyful and clear"], correctAnswer: "Suppressed or held back", image: null },
+                { id: 'av_s3q20', question: "'Verdant' fields are:", options: ["Dry and brown", "Green with grass or other rich vegetation", "Covered in snow"], correctAnswer: "Green with grass or other rich vegetation", image: null }
+            ],
+            // --- NEW SET 4: Detailed Character Description ---
+            [
+                { id: 'av_s4q1', question: "A 'dishevelled' appearance means someone looks:", options: ["Neat and tidy", "Untidy; their hair and clothes are messy", "Formally dressed"], correctAnswer: "Untidy; their hair and clothes are messy", image: null },
+                { id: 'av_s4q2', question: "Someone with an 'immaculate' uniform keeps it:", options: ["Slightly dirty", "Perfectly clean, neat, and tidy", "Wrinkled and stained"], correctAnswer: "Perfectly clean, neat, and tidy", image: null },
+                { id: 'av_s4q3', question: "A 'wizened' old man has a face that is likely:", options: ["Smooth and youthful", "Wrinkled and shrunken with age", "Plump and rosy"], correctAnswer: "Wrinkled and shrunken with age", image: null },
+                { id: 'av_s4q4', question: "An 'altruistic' person is primarily concerned with:", options: ["Their own well-being and success", "The welfare of others; unselfish", "Gaining wealth and power"], correctAnswer: "The welfare of others; unselfish", image: null },
+                { id: 'av_s4q5', question: "An 'assiduous' worker is:", options: ["Lazy and unproductive", "Showing great care and perseverance; diligent", "Careless and easily distracted"], correctAnswer: "Showing great care and perseverance; diligent", image: null },
+                { id: 'av_s4q6', question: "Someone who is 'eloquent' speaks or writes:", options: ["Hesitantly and awkwardly", "Fluently, persuasively, and gracefully", "Rudely and abruptly"], correctAnswer: "Fluently, persuasively, and gracefully", image: null },
+                { id: 'av_s4q7', question: "A 'judicious' decision is one that shows:", options: ["Poor judgement and recklessness", "Good judgement and sense; wise", "Haste and impatience"], correctAnswer: "Good judgement and sense; wise", image: null },
+                { id: 'av_s4q8', question: "To be 'resilient' means to be able to:", options: ["Give up easily when faced with difficulties", "Withstand or recover quickly from difficult conditions", "Avoid all challenges"], correctAnswer: "Withstand or recover quickly from difficult conditions", image: null },
+                { id: 'av_s4q9', question: "An 'avaricious' person is characterized by:", options: ["Generosity and charity", "Extreme greed for wealth or material gain", "Indifference to money"], correctAnswer: "Extreme greed for wealth or material gain", image: null },
+                { id: 'av_s4q10', question: "A 'cantankerous' old man is often:", options: ["Cheerful and agreeable", "Bad-tempered, argumentative, and uncooperative", "Quiet and shy"], correctAnswer: "Bad-tempered, argumentative, and uncooperative", image: null },
+                { id: 'av_s4q11', question: "To be 'fastidious' means to be:", options: ["Careless about details", "Very attentive to and concerned about accuracy and detail; meticulous", "Disorganized and messy"], correctAnswer: "Very attentive to and concerned about accuracy and detail; meticulous", image: null },
+                { id: 'av_s4q12', question: "An 'obsequious' person is often seen as:", options: ["Genuinely respectful and helpful", "Overly obedient or attentive in a servile way; fawning", "Independent and assertive"], correctAnswer: "Overly obedient or attentive in a servile way; fawning", image: null },
+                { id: 'av_s4q13', question: "A 'surly' shopkeeper might greet customers:", options: ["With a warm smile", "Bad-temperedly and unfriendlily", "Enthusiastically"], correctAnswer: "Bad-temperedly and unfriendlily", image: null },
+                { id: 'av_s4q14', question: "A 'corpulent' individual is:", options: ["Thin and slender", "Fat or overweight", "Muscular and athletic"], correctAnswer: "Fat or overweight", image: null },
+                { id: 'av_s4q15', question: "A 'boisterous' crowd is:", options: ["Quiet and subdued", "Noisy, energetic, and cheerful; rowdy", "Solemn and serious"], correctAnswer: "Noisy, energetic, and cheerful; rowdy", image: null },
+                { id: 'av_s4q16', question: "A 'curt' reply is:", options: ["Long and detailed", "Rudely brief or abrupt", "Polite and elaborate"], correctAnswer: "Rudely brief or abrupt", image: null },
+                { id: 'av_s4q17', question: "Someone described as 'sagacious' is:", options: ["Foolish and unwise", "Having or showing keen mental discernment and good judgement; wise", "Young and inexperienced"], correctAnswer: "Having or showing keen mental discernment and good judgement; wise", image: null },
+                { id: 'av_s4q18', question: "A 'taciturn' person is someone who is:", options: ["Very talkative and outgoing", "Reserved or uncommunicative in speech; saying little", "Loud and attention-seeking"], correctAnswer: "Reserved or uncommunicative in speech; saying little", image: null },
+                { id: 'av_s4q19', question: "To be 'punctilious' means to be:", options: ["Careless about rules and conventions", "Showing great attention to detail or correct behaviour", "Rebellious and disobedient"], correctAnswer: "Showing great attention to detail or correct behaviour", image: null },
+                { id: 'av_s4q20', question: "A 'gangly' teenager often appears:", options: ["Short and stocky", "Tall, thin, and awkward in movements or bearing", "Graceful and athletic"], correctAnswer: "Tall, thin, and awkward in movements or bearing", image: null }
+            ],
+            // --- NEW SET 5: Mixed Emotional & Descriptive Nuances ---
+            [
+                { id: 'av_s5q1', question: "A 'sepulchral' tone of voice when describing a haunted house creates a ____ atmosphere.", options: ["Joyful and light-hearted", "Gloomy, dismal, and funereal", "Energetic and exciting"], correctAnswer: "Gloomy, dismal, and funereal", image: null },
+                { id: 'av_s5q2', question: "The 'effervescent' personality of the host made everyone feel ____.", options: ["Depressed and tired", "Vivacious, enthusiastic, and lively", "Anxious and uncomfortable"], correctAnswer: "Vivacious, enthusiastic, and lively", image: null },
+                { id: 'av_s5q3', question: "She felt a 'twinge' of ____ when she saw her old friend succeed where she had failed.", options: ["Pure joy", "Envy or regret (a slight, sharp feeling)", "Complete indifference"], correctAnswer: "Envy or regret (a slight, sharp feeling)", image: null },
+                { id: 'av_s5q4', question: "The 'halcyon' days of his childhood were filled with ____.", options: ["Constant trouble and stress", "Idyllically happy and peaceful times", "Boredom and monotony"], correctAnswer: "Idyllically happy and peaceful times", image: null },
+                { id: 'av_s5q5', question: "His 'vociferous' complaints about the service could be heard throughout the restaurant, showing his ____.", options: ["Quiet acceptance", "Loud and vehement dissatisfaction", "Shy embarrassment"], correctAnswer: "Loud and vehement dissatisfaction", image: null },
+                { id: 'av_s5q6', question: "The 'insipid' conversation at the party made her feel ____.", options: ["Highly engaged and fascinated", "Lacking vigour or interest; dull and bored", "Amused and entertained"], correctAnswer: "Lacking vigour or interest; dull and bored", image: null },
+                { id: 'av_s5q7', question: "A 'furtive' glance from the suspect made the detective feel ____.", options: ["Completely reassured", "Suspicious, as it suggested secrecy or stealth", "Amused by his openness"], correctAnswer: "Suspicious, as it suggested secrecy or stealth", image: null },
+                { id: 'av_s5q8', question: "The 'mellifluous' sound of the harp created a ____ mood.", options: ["Harsh and grating", "Pleasantly smooth and musical; sweet-sounding", "Tense and anxious"], correctAnswer: "Pleasantly smooth and musical; sweet-sounding", image: null },
+                { id: 'av_s5q9', question: "He was 'adamant' in his refusal, showing ____.", options: ["Flexibility and willingness to change", "Unshakeable determination; impossible to persuade", "Uncertainty and hesitation"], correctAnswer: "Unshakeable determination; impossible to persuade", image: null },
+                { id: 'av_s5q10', question: "The 'austere' design of the room, with its bare walls and simple furniture, felt ____.", options: ["Warm and inviting", "Severe or strict in manner or appearance; unadorned", "Cluttered and chaotic"], correctAnswer: "Severe or strict in manner or appearance; unadorned", image: null },
+                { id: 'av_s5q11', question: "Her 'quixotic' attempt to save all the stray cats in the city, while noble, seemed ____.", options: ["Entirely practical and achievable", "Exceedingly idealistic, unrealistic, and impractical", "Selfish and uncaring"], correctAnswer: "Exceedingly idealistic, unrealistic, and impractical", image: null },
+                { id: 'av_s5q12', question: "The 'nebulous' outline of the distant mountains in the fog made them appear ____.", options: ["Sharp and clearly defined", "Hazy, vague, or ill-defined", "Brightly lit and distinct"], correctAnswer: "Hazy, vague, or ill-defined", image: null },
+                { id: 'av_s5q13', question: "A 'tirade' of angry words from the coach left the team feeling ____.", options: ["Encouraged and motivated", "Criticized and disheartened by the long, angry speech", "Amused and indifferent"], correctAnswer: "Criticized and disheartened by the long, angry speech", image: null },
+                { id: 'av_s5q14', question: "The 'labyrinthine' alleyways of the old city were ____ to navigate.", options: ["Straightforward and simple", "Intricately confusing and maze-like", "Wide and open"], correctAnswer: "Intricately confusing and maze-like", image: null },
+                { id: 'av_s5q15', question: "He felt a 'palpable' sense of relief when the exam was over, meaning the relief was ____.", options: ["Barely noticeable", "Able to be touched or felt; intense and obvious", "Completely absent"], correctAnswer: "Able to be touched or felt; intense and obvious", image: null },
+                { id: 'av_s5q16', question: "Her 'seraphic' smile conveyed a sense of ____.", options: ["Mischief and cunning", "Angelic purity and blissfulness", "Sadness and regret"], correctAnswer: "Angelic purity and blissfulness", image: null },
+                { id: 'av_s5q17', question: "The 'ubiquitous' presence of smartphones means they seem to be ____.", options: ["Very rare and hard to find", "Present, appearing, or found everywhere", "Only used by a select few"], correctAnswer: "Present, appearing, or found everywhere", image: null },
+                { id: 'av_s5q18', question: "A 'guttural' sound coming from the dark cave made the explorers feel ____.", options: ["Calm and reassured", "Uneasy, as it was harsh and produced in the throat", "Amused and curious"], correctAnswer: "Uneasy, as it was harsh and produced in the throat", image: null },
+                { id: 'av_s5q19', question: "She gave a 'curtsey' that was both ____ and respectful.", options: ["Clumsy and awkward", "Graceful and formal (a woman's bow)", "Loud and boisterous"], correctAnswer: "Graceful and formal (a woman's bow)", image: null }, // Mixed character action/description
+                { id: 'av_s5q20', question: "The 'somnolent' drone of the lecturer's voice made many students feel ____.", options: ["Wide awake and alert", "Sleepy or drowsy", "Highly engaged and excited"], correctAnswer: "Sleepy or drowsy", image: null }
+            ]
+        ];
+
+        const TOTAL_SETS_AVAILABLE = allAdvancedVocabQuestionsBySet.length; 
+
+        // --- State Variables ---
+        let questionSets = []; 
+        let currentSetData = []; 
+        let currentQuestionIndex = 0;
+        let score = 0;
+        let incorrectAnswers = []; 
+        let startTime;
+        let endTime;
+        let isRedoing = false;
+        let proceedTimeoutId = null;
+        let isWaitingToProceed = false;
+        let selectedSetNumberGlobal = 0; 
+        let WEBHOOK_URL = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL;
+        let userName = localStorage.getItem(USER_NAME_STORAGE_KEY) || '';
+
+        // --- Sound Synthesis (Tone.js) ---
+        const correctSound = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.05, release: 0.2 }, }).toDestination();
+        const incorrectSound = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.2 } }).toDestination();
+
+        // --- Confetti ---
+        const confettiCanvas = document.getElementById('confettiCanvas');
+        const myConfetti = confetti.create(confettiCanvas, { resize: true, useWorker: true });
+
+        // --- DOM Elements ---
+        const nameModal = document.getElementById('nameModal');
+        const userNameInput = document.getElementById('userNameInput');
+        const setSelectionScreen = document.getElementById('setSelectionScreen');
+        const setButtonsContainer = document.getElementById('setButtonsContainer');
+        const flashcardScreen = document.getElementById('flashcardScreen');
+        const resultsScreen = document.getElementById('resultsScreen');
+        const progressText = document.getElementById('progressText');
+        const progressBarFill = document.getElementById('progressBarFill');
+        const flashcard = document.getElementById('flashcard');
+        const questionImageEl = document.getElementById('questionImage');
+        const questionText = document.getElementById('questionText');
+        const feedbackText = document.getElementById('feedbackText');
+        const continueText = document.getElementById('continueText');
+        const choiceButtons = [ document.getElementById('choice1'), document.getElementById('choice2'), document.getElementById('choice3') ];
+        const scoreDisplayEl = document.getElementById('scoreDisplay');
+        const percentageEl = document.getElementById('percentage');
+        const timeTakenEl = document.getElementById('timeTaken');
+        const incorrectListContainer = document.getElementById('incorrectListContainer');
+        const incorrectList = document.getElementById('incorrectList');
+        const noIncorrectText = document.getElementById('noIncorrectText');
+        const redoIncorrectButton = document.getElementById('redoIncorrectButton');
+        const webhookModal = document.getElementById('webhookModal');
+        const webhookUrlInput = document.getElementById('webhookUrlInput');
+        const encouragementTextEl = document.getElementById('encouragementText');
+        const resultsHeadingEl = document.getElementById('resultsHeading');
+        const raceTrackContainer = document.querySelector('#resultsScreen .race-track-container');
+        const raceTrackFillEl = document.getElementById('raceTrackFill');
+        const rocketEl = document.getElementById('rocketEl');
+
+
+        flashcard.addEventListener('click', () => { if (isWaitingToProceed) proceedToNext(); });
+        userNameInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') { event.preventDefault(); saveUserName(); }});
+
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        function populateSetButtons() {
+            setButtonsContainer.innerHTML = ''; 
+            const setColors = [
+                'bg-rose-500 hover:bg-rose-600',    
+                'bg-pink-500 hover:bg-pink-600',  
+                'bg-amber-500 hover:bg-amber-600 text-slate-800', 
+                'bg-lime-500 hover:bg-lime-600 text-slate-800',
+                'bg-teal-500 hover:bg-teal-600'     
+            ];
+            const setNames = [
+                "Adv. Emotions 1",
+                "Adv. Emotions 2",
+                "Vivid Settings",
+                "Character Details",
+                "Mixed Nuances"
+            ];
+
+            allAdvancedVocabQuestionsBySet.forEach((set, index) => {
+                if (set.length >= QUESTIONS_PER_SET) { 
+                    const button = document.createElement('button');
+                    button.textContent = setNames[index] || `Set ${index + 1}`;
+                    const textColorClass = setColors[index % setColors.length].includes('text-slate-800') ? '' : 'text-white';
+                    button.className = `action-button w-full py-3 px-6 ${setColors[index % setColors.length]} ${textColorClass}`;
+                    button.onclick = () => selectSet(index + 1);
+                    setButtonsContainer.appendChild(button);
+                }
+            });
+        }
+
+
+        function prepareQuestionSets() {
+            questionSets = allAdvancedVocabQuestionsBySet.map(set => {
+                if (set.length >= QUESTIONS_PER_SET) {
+                    let setToShuffle = [...set]; 
+                    shuffleArray(setToShuffle); 
+                    return setToShuffle.slice(0, QUESTIONS_PER_SET); 
+                }
+                return []; 
+            }).filter(set => set.length === QUESTIONS_PER_SET); 
+
+             if (questionSets.length < allAdvancedVocabQuestionsBySet.length) {
+                console.warn(`Some predefined sets did not meet the ${QUESTIONS_PER_SET} question requirement.`);
+             }
+             console.log(`Prepared ${questionSets.length} valid advanced vocabulary sets for play.`);
+        }
+
+
+         function saveUserName() {
+            const name = userNameInput.value.trim();
+            userName = name ? name : 'Anonymous';
+            localStorage.setItem(USER_NAME_STORAGE_KEY, userName);
+            nameModal.style.display = 'none';
+            showSetSelection();
+        }
+
+
+        function selectSet(setNumber) { 
+            Tone.start().catch(e => console.warn("Audio context error:", e));
+
+            if (setNumber < 1 || setNumber > questionSets.length) {
+                alert(`Set ${setNumber} is not available. Please check console.`);
+                console.error(`Invalid set number: ${setNumber}. Available sets: ${questionSets.length}`);
+                return;
+            }
+            currentSetData = [...questionSets[setNumber - 1]]; 
+            selectedSetNumberGlobal = setNumber;
+
+            currentQuestionIndex = 0;
+            score = 0;
+            incorrectAnswers = []; 
+            isRedoing = false;
+            
+            setSelectionScreen.classList.add('hidden');
+            resultsScreen.classList.add('hidden');
+            flashcardScreen.classList.remove('hidden');
+            startTime = new Date();
+            displayQuestion();
+        }
+
+        function resetCardState() {
+            if (proceedTimeoutId) { clearTimeout(proceedTimeoutId); proceedTimeoutId = null; }
+            isWaitingToProceed = false;
+            flashcard.classList.remove('shake', 'correct-flip', 'incorrect-state', 'clickable-card');
+            flashcard.style.backgroundColor = ''; flashcard.style.color = '';
+            questionText.style.color = ''; feedbackText.style.color = '';
+            feedbackText.textContent = '';
+            feedbackText.className = 'mt-2 text-base md:text-lg font-semibold';
+            flashcard.style.cursor = 'default';
+            continueText.classList.add('hidden');
+            questionImageEl.classList.add('hidden'); questionImageEl.src = '';
+        }
+
+        function displayQuestion() {
+            resetCardState();
+            if (currentQuestionIndex >= currentSetData.length) { showResults(); return; }
+
+            const questionData = currentSetData[currentQuestionIndex];
+            questionText.textContent = questionData.question;
+            if (questionData.image) { questionImageEl.src = questionData.image; questionImageEl.classList.remove('hidden'); }
+            
+            let displayOptions = [...questionData.options];
+            shuffleArray(displayOptions); 
+
+            choiceButtons.forEach((button, index) => {
+                button.textContent = displayOptions[index];
+                button.disabled = false;
+                button.dataset.answer = displayOptions[index];
+                button.className = 'choice-button bg-slate-100 hover:bg-slate-200 text-slate-700 text-base md:text-lg';
+            });
+            updateProgress();
+        }
+        
+        function updateProgress() {
+            const totalQuestions = currentSetData.length;
+            const completed = currentQuestionIndex;
+            const progressPercentage = totalQuestions > 0 ? (completed / totalQuestions) * 100 : 0;
+            progressText.textContent = `${completed} / ${totalQuestions}`;
+            progressBarFill.style.width = `${progressPercentage}%`;
+        }
+
+        function checkAnswer(button) {
+            Tone.start().catch(e => console.warn("Audio context failed to start:", e));
+            if (isWaitingToProceed) return;
+
+            const selectedAnswer = button.dataset.answer;
+            const questionData = currentSetData[currentQuestionIndex];
+            const correctAnswer = questionData.correctAnswer;
+
+            choiceButtons.forEach(btn => btn.disabled = true);
+
+            if (selectedAnswer === correctAnswer) {
+                if (!isRedoing) score++;
+                flashcard.classList.add('correct-flip');
+                feedbackText.textContent = 'Correct!';
+                button.className = 'choice-button bg-emerald-500 text-white ring-2 ring-emerald-700 text-base md:text-lg';
+                myConfetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+                correctSound.triggerAttackRelease("G5", "8n", Tone.now());
+            } else {
+                flashcard.classList.add('shake', 'incorrect-state');
+                feedbackText.innerHTML = `Correct Answer: <span class="font-bold">${correctAnswer}</span>`;
+                button.className = 'choice-button bg-red-500 text-white ring-2 ring-red-700 text-base md:text-lg';
+                choiceButtons.forEach(btn => {
+                     if (btn.dataset.answer === correctAnswer) {
+                         btn.className = 'choice-button bg-emerald-100 border-2 border-emerald-400 text-emerald-700 font-bold text-base md:text-lg opacity-90';
+                     }
+                });
+                incorrectSound.triggerAttackRelease("C3", "8n");
+                incorrectAnswers.push({ 
+                    questionData: JSON.parse(JSON.stringify(questionData)), 
+                    userAnswer: selectedAnswer 
+                });
+                console.log("Mistake recorded:", incorrectAnswers); 
+            }
+            isWaitingToProceed = true;
+            flashcard.classList.add('clickable-card'); flashcard.style.cursor = 'pointer';
+            continueText.classList.remove('hidden');
+            if (proceedTimeoutId) clearTimeout(proceedTimeoutId);
+            proceedTimeoutId = setTimeout(proceedToNext, AUTO_PROCEED_DELAY);
+            currentQuestionIndex++;
+        }
+
+        function proceedToNext() {
+             if (proceedTimeoutId) { clearTimeout(proceedTimeoutId); proceedTimeoutId = null; }
+             isWaitingToProceed = false;
+             displayQuestion();
+        }
+
+        function showResults() {
+            endTime = new Date();
+            const timeDiff = Math.round((endTime - startTime) / 1000);
+            const totalQuestions = currentSetData.length;
+            const currentScore = isRedoing ? (totalQuestions - incorrectAnswers.length) : score;
+            const percentage = totalQuestions > 0 ? Math.round((currentScore / totalQuestions) * 100) : 0;
+
+            resultsHeadingEl.textContent = isRedoing ? 'Review Complete!' : `Set ${selectedSetNumberGlobal} Complete!`;
+            scoreDisplayEl.textContent = `${currentScore} / ${totalQuestions}`;
+            percentageEl.textContent = `${percentage}`;
+            timeTakenEl.textContent = `${timeDiff}s`;
+
+            if (percentage === 100) encouragementTextEl.textContent = isRedoing ? "Perfect review!" : "Outstanding! Your advanced vocabulary is impressive!";
+            else if (percentage >= 70) encouragementTextEl.textContent = isRedoing ? "Good review!" : "Superb effort! You're mastering complex words!";
+            else encouragementTextEl.textContent = isRedoing ? "Keep reviewing!" : "Well done! Keep practicing these advanced terms!";
+            encouragementTextEl.className = `text-lg font-semibold mb-6 ${percentage === 100 ? 'text-emerald-700' : percentage >= 70 ? 'text-amber-700' : 'text-orange-700'}`; 
+
+            flashcardScreen.classList.add('hidden');
+            resultsScreen.classList.remove('hidden');
+
+            const trackWidth = raceTrackContainer.offsetWidth, effectiveTrackWidth = trackWidth - 24;
+            const animationDuration = 1500, animStartTime = performance.now();
+            rocketEl.style.left = '0px'; raceTrackFillEl.style.width = '0px';
+            function animateRocket(currentTime) {
+                const elapsedTime = currentTime - animStartTime, progress = Math.min(elapsedTime / animationDuration, 1);
+                const animatedPercentage = Math.round(progress * percentage);
+                const position = Math.max(0, (animatedPercentage / 100) * effectiveTrackWidth);
+                rocketEl.style.left = `${position}px`; raceTrackFillEl.style.width = `${position}px`;
+                if (progress < 1) requestAnimationFrame(animateRocket);
+                else {
+                     const finalPos = Math.max(0, (percentage / 100) * effectiveTrackWidth);
+                     rocketEl.style.left = `${finalPos}px`; raceTrackFillEl.style.width = `${finalPos}px`;
+                }
+            }
+            requestAnimationFrame(animateRocket);
+
+            incorrectList.innerHTML = '';
+            const incorrectAnswersForDisplay = incorrectAnswers; 
+            
+            if (incorrectAnswersForDisplay.length > 0) {
+                incorrectListContainer.classList.remove('hidden'); noIncorrectText.classList.add('hidden');
+                incorrectAnswersForDisplay.forEach(item => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<b>Q:</b> ${item.questionData.question}<br/>` +
+                                   `<b>Your:</b> <span class="text-red-500">${item.userAnswer}</span><br/>` +
+                                   `<b>Correct:</b> <span class="text-emerald-600">${item.questionData.correctAnswer}</span>`;
+                    incorrectList.appendChild(li);
+                });
+                redoIncorrectButton.classList.toggle('hidden', isRedoing || incorrectAnswersForDisplay.length === 0);
+            } else {
+                incorrectListContainer.classList.add('hidden'); noIncorrectText.classList.remove('hidden');
+                redoIncorrectButton.classList.add('hidden');
+            }
+            
+            sendResultsToWebhook({
+                name: userName, 
+                topic: "Advanced PSLE Vocabulary", 
+                set: selectedSetNumberGlobal, 
+                score: currentScore, 
+                totalQuestions, 
+                percentage, 
+                timeTaken: timeDiff,
+                incorrectAnswersData: incorrectAnswersForDisplay.map(item => ({  
+                    question: item.questionData.question,       
+                    userAnswer: item.userAnswer,                 
+                    correctAnswer: item.questionData.correctAnswer 
+                })),
+                isRedoing, 
+                os: navigator.platform || 'N/A', 
+                deviceTime: new Date().toString(), 
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'N/A'
+            });
+
+            if (isRedoing) {
+                isRedoing = false; 
+            }
+        }
+
+        function redoIncorrect() {
+            const questionsToRedo = incorrectAnswers.map(item => item.questionData);
+            if (questionsToRedo.length === 0) { 
+                alert("No incorrect answers from the last round to redo!"); 
+                return; 
+            }
+            currentSetData = questionsToRedo;
+            shuffleArray(currentSetData); 
+            currentQuestionIndex = 0;
+            score = 0; 
+            incorrectAnswers = []; 
+            isRedoing = true; 
+            resultsScreen.classList.add('hidden'); 
+            flashcardScreen.classList.remove('hidden');
+            startTime = new Date();
+            displayQuestion();
+        }
+
+        function showSetSelection() {
+            if (proceedTimeoutId) { clearTimeout(proceedTimeoutId); proceedTimeoutId = null; }
+            isWaitingToProceed = false; 
+            isRedoing = false; 
+            nameModal.style.display = 'none';
+            flashcardScreen.classList.add('hidden'); 
+            resultsScreen.classList.add('hidden');
+            setSelectionScreen.classList.remove('hidden');
+            progressText.textContent = `0 / ${QUESTIONS_PER_SET}`; 
+            progressBarFill.style.width = '0%';
+            prepareQuestionSets(); 
+            populateSetButtons();  
+            if (!document.getElementById('webhookSettingsButton')) addWebhookSettingsButton();
+        }
+
+        function sendResultsToWebhook(data) {
+            const currentWebhookUrl = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL;
+             // Stricter check: only skip if the URL is the default placeholder AND it hasn't been explicitly saved by the user
+            if (currentWebhookUrl === DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.includes('xxxx') && !localStorage.getItem(WEBHOOK_URL_STORAGE_KEY)) {
+                   console.log("Webhook URL is the default placeholder and has not been explicitly set. Skipping sending results."); 
+                   return;
+           }
+           if (!currentWebhookUrl) { // Also handles if localStorage somehow returns null/empty and default is also empty
+                console.log("Webhook URL is not configured. Skipping sending results.");
+                return;
+           }
+
+           if (!navigator.onLine) { console.warn("Browser is offline. Skipping sending results to webhook."); return; }
+           
+           console.log("Sending to webhook:", currentWebhookUrl);
+           console.log("Webhook payload:", data); 
+
+           fetch(currentWebhookUrl, { 
+               method: 'POST', 
+               headers: { 'Content-Type': 'application/json', }, 
+               body: JSON.stringify(data), 
+            })
+           .then(res => {
+               if (!res.ok) {
+                   return res.text().then(text => { throw new Error(`Webhook Error ${res.status} (${res.statusText}): ${text}`) });
+               }
+               return res.json().catch(()=>res.text()); 
+            })
+           .then(d => console.log('Webhook success:', d))
+           .catch(e => console.error('Webhook fetch error:', e));
+        }
+
+        function openWebhookModal() {
+            const currentWebhookUrl = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL;
+            webhookUrlInput.value = (currentWebhookUrl === DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.includes('xxxx') && !localStorage.getItem(WEBHOOK_URL_STORAGE_KEY)) ? '' : currentWebhookUrl;
+            webhookModal.style.display = 'flex';
+        }
+
+        function closeWebhookModal() { webhookModal.style.display = 'none'; }
+
+        function saveWebhookUrl() {
+            const url = webhookUrlInput.value.trim();
+            try {
+                if (url) { 
+                    new URL(url); 
+                    localStorage.setItem(WEBHOOK_URL_STORAGE_KEY, url); 
+                    WEBHOOK_URL = url; 
+                } else { 
+                    localStorage.removeItem(WEBHOOK_URL_STORAGE_KEY); 
+                    WEBHOOK_URL = DEFAULT_WEBHOOK_URL; 
+                }
+                closeWebhookModal();
+            } catch (_) {
+                 if (url.startsWith('https://hook.') && (url.includes('.make.com/') || url.includes('.integromat.com/'))) {
+                    localStorage.setItem(WEBHOOK_URL_STORAGE_KEY, url); 
+                    WEBHOOK_URL = url;
+                    closeWebhookModal();
+                 } else { alert("Invalid URL. Please enter a valid webhook URL."); }
+            }
+        }
+
+        function addWebhookSettingsButton() {
+            if (document.getElementById('webhookSettingsButton')) return;
+            const btn = document.createElement('button');
+            btn.textContent = 'Webhook Settings'; btn.id = 'webhookSettingsButton';
+            btn.className = 'action-button mt-6 bg-slate-400 hover:bg-slate-500 text-white w-full text-sm py-3 px-6';
+            btn.onclick = openWebhookModal;
+            const container = document.getElementById('setSelectionScreen');
+            if (container) { 
+                container.appendChild(btn);
+            }
+        }
+
+         document.addEventListener('DOMContentLoaded', () => {
+            prepareQuestionSets(); 
+            populateSetButtons();  
+
+            if (questionSets.length === 0) { 
+                document.body.innerHTML = `<div class="text-center p-8 bg-red-100 text-red-700">
+                    <h1 class="text-2xl font-bold">Error: No Valid Question Sets</h1>
+                    <p>Please ensure 'allAdvancedVocabQuestionsBySet' in the script has sets with at least ${QUESTIONS_PER_SET} questions each.</p>
+                </div>`;
+                return;
+            }
+            userName = localStorage.getItem(USER_NAME_STORAGE_KEY) || '';
+            WEBHOOK_URL = localStorage.getItem(WEBHOOK_URL_STORAGE_KEY) || DEFAULT_WEBHOOK_URL; 
+
+            if (userName) showSetSelection();
+            else { nameModal.style.display = 'flex'; userNameInput.focus(); }
+            addWebhookSettingsButton();
+         });
+    </script>
+</body>
+</html>
